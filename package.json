@@ -1,0 +1,43 @@
+{
+  "name": "r2git",
+  "version": "0.2.0",
+  "description": "Project-agnostic CLI tool for R2 backup/restore in the git style",
+  "bin": {
+    "r2git": "./dist/index.js"
+  },
+  "files": [
+    "dist/index.js",
+    "README.md"
+  ],
+  "type": "module",
+  "scripts": {
+    "start": "bun src/main.ts",
+    "build": "bun src/build.ts",
+    "build:all": "bun src/build.ts",
+    "publish": "bun src/publish.ts",
+    "prepare": "test -d .git && husky || true",
+    "f": "oxfmt --write .",
+    "f:check": "oxfmt --check .",
+    "lint:fix": "oxlint --fix .",
+    "lint": "oxlint .",
+    "types": "tsc --noEmit",
+    "check": "bun lint && bun types",
+    "bs": "mkdir -p scripts && curl -sL https://raw.githubusercontent.com/iamvikshan/.github/main/scripts/bootstrap.sh > scripts/bootstrap.sh && chmod +x scripts/bootstrap.sh && scripts/bootstrap.sh",
+    "upd": "sudo apt update && sudo apt upgrade -y && bun upgrade && bun update --latest && bun f && chmod +x scripts/agents.sh && scripts/agents.sh"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.7.0",
+    "aws4fetch": "^1.0.20"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  }
+}
