@@ -1,0 +1,8 @@
+# 1. Enforce global identity (instant execution)
+./.husky/identity-guard.sh
+
+# 2. Run project-specific checks
+echo "Running pre-commit checks..."
+bunx lint-staged || exit 1
+bun check || exit 1
+echo "Pre-commit checks passed successfully."
