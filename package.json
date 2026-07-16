@@ -1,6 +1,6 @@
 {
   "name": "r2git",
-  "version": "0.2.0",
+  "version": "0.0.1",
   "description": "Project-agnostic CLI tool for R2 backup/restore in the git style",
   "bin": {
     "r2git": "./dist/index.js"
