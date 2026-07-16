@@ -6,7 +6,6 @@ on:
     paths:
       - "src/**"
       - "package.json"
-      - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
       tag_override:
