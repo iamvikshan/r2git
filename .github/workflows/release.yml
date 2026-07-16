@@ -6,6 +6,7 @@ on:
     paths:
       - "src/**"
       - "package.json"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
       tag_override:
@@ -150,11 +151,11 @@ jobs:
       - name: Archive binaries for GitHub Release
         run: |
           cd dist
-          tar -czf migrate-linux-x64.tar.gz migrate-linux-x64
-          tar -czf migrate-linux-arm64.tar.gz migrate-linux-arm64
-          tar -czf migrate-macos-x64.tar.gz migrate-macos-x64
-          tar -czf migrate-macos-arm64.tar.gz migrate-macos-arm64
-          zip -q migrate-windows-x64.zip migrate-windows-x64.exe
+          tar -czf r2git-linux-x64.tar.gz r2git-linux-x64
+          tar -czf r2git-linux-arm64.tar.gz r2git-linux-arm64
+          tar -czf r2git-macos-x64.tar.gz r2git-macos-x64
+          tar -czf r2git-macos-arm64.tar.gz r2git-macos-arm64
+          zip -q r2git-windows-x64.zip r2git-windows-x64.exe
           cd ..
 
       - name: Update package.json version and synchronize lockfile
