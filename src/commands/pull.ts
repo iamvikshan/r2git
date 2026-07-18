@@ -17,6 +17,87 @@ import type { Manifest, PullResult } from "../utils/store-types"
  * Restore a single file from the manifest.
  * Returns true if restored from R2, false if already correct locally.
  */
+async function restoreSymlinkTar(
+  r2Config: ResolvedConfig["r2"],
+  projectPrefix: string,
+  path: string,
+  entry: Manifest["entries"][string],
+  absolutePath: string,
+): Promise<"restored" | "error"> {
+  try {
+    const data = await downloadObjectByHash(r2Config, entry.hash, projectPrefix)
+    // Write tar to temp and extract into isolated directory
+    const tmpDir = process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
+    const tmpTar = `${tmpDir}/r2git-symlink-${entry.hash}-${Date.now()}.tar`
+    const extractDir = `${tmpDir}/r2git-extract-${entry.hash}-${Date.now()}`
+    try {
+      await Bun.write(tmpTar, data)
+      Bun.spawnSync(["mkdir", "-p", extractDir])
+      const extractProc = Bun.spawnSync([
+        "tar",
+        "-xf",
+        tmpTar,
+        "-C",
+        extractDir,
+      ])
+      if (!extractProc.success) {
+        logError(`Failed to extract symlink tar for ${path}`, "pull")
+        return "error"
+      }
+      // Validate that exactly one symlink was extracted
+      const listProc = Bun.spawnSync(["find", extractDir, "-type", "l"])
+      const symlinks = listProc.stdout
+        .toString()
+        .trim()
+        .split("\n")
+        .filter(l => l)
+      if (symlinks.length !== 1) {
+        logError(
+          `Invalid symlink archive for ${path}: expected 1 symlink, found ${symlinks.length}`,
+          "pull",
+        )
+        return "error"
+      }
+      const extractedLink = symlinks[0]
+      if (!extractedLink) {
+        logError(`No symlink found in archive for ${path}`, "pull")
+        return "error"
+      }
+      // Ensure the destination parent exists (symlink-only nested paths
+      // may have no parent on a fresh machine), and clear any existing
+      // destination so a directory→symlink transition replaces the old
+      // directory instead of copying the link inside it.
+      const parentDir =
+        absolutePath.lastIndexOf("/") > 0
+          ? absolutePath.substring(0, absolutePath.lastIndexOf("/"))
+          : "/"
+      Bun.spawnSync(["mkdir", "-p", parentDir])
+      Bun.spawnSync(["rm", "-rf", absolutePath])
+      // Install the validated symlink at the manifest-derived absolutePath
+      const installProc = Bun.spawnSync([
+        "cp",
+        "-a",
+        extractedLink,
+        absolutePath,
+      ])
+      if (!installProc.success) {
+        logError(`Failed to install symlink for ${path}`, "pull")
+        return "error"
+      }
+      return "restored"
+    } finally {
+      Bun.spawnSync(["rm", "-rf", extractDir])
+      Bun.spawnSync(["rm", "-f", tmpTar])
+    }
+  } catch (e) {
+    logError(
+      `Failed to restore symlink ${path}: ${e instanceof Error ? e.message : String(e)}`,
+      "pull",
+    )
+    return "error"
+  }
+}
+
 async function restoreFile(
   r2Config: ResolvedConfig["r2"],
   projectPrefix: string,
@@ -27,73 +108,7 @@ async function restoreFile(
   const absolutePath = resolvePath(path, ctx)
 
   if (entry.type === "symlink-tar") {
-    // Download the symlink tar and extract it
-    try {
-      const data = await downloadObjectByHash(
-        r2Config,
-        entry.hash,
-        projectPrefix,
-      )
-      // Write tar to temp and extract into isolated directory
-      const tmpDir = process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
-      const tmpTar = `${tmpDir}/r2git-symlink-${entry.hash}-${Date.now()}.tar`
-      const extractDir = `${tmpDir}/r2git-extract-${entry.hash}-${Date.now()}`
-      try {
-        await Bun.write(tmpTar, data)
-        Bun.spawnSync(["mkdir", "-p", extractDir])
-        const extractProc = Bun.spawnSync([
-          "tar",
-          "-xf",
-          tmpTar,
-          "-C",
-          extractDir,
-        ])
-        if (!extractProc.success) {
-          logError(`Failed to extract symlink tar for ${path}`, "pull")
-          return "error"
-        }
-        // Validate that exactly one symlink was extracted
-        const listProc = Bun.spawnSync(["find", extractDir, "-type", "l"])
-        const symlinks = listProc.stdout
-          .toString()
-          .trim()
-          .split("\n")
-          .filter(l => l)
-        if (symlinks.length !== 1) {
-          logError(
-            `Invalid symlink archive for ${path}: expected 1 symlink, found ${symlinks.length}`,
-            "pull",
-          )
-          return "error"
-        }
-        const extractedLink = symlinks[0]
-        if (!extractedLink) {
-          logError(`No symlink found in archive for ${path}`, "pull")
-          return "error"
-        }
-        // Install the validated symlink at the manifest-derived absolutePath
-        const installProc = Bun.spawnSync([
-          "cp",
-          "-a",
-          extractedLink,
-          absolutePath,
-        ])
-        if (!installProc.success) {
-          logError(`Failed to install symlink for ${path}`, "pull")
-          return "error"
-        }
-        return "restored"
-      } finally {
-        Bun.spawnSync(["rm", "-rf", extractDir])
-        Bun.spawnSync(["rm", "-f", tmpTar])
-      }
-    } catch (e) {
-      logError(
-        `Failed to restore symlink ${path}: ${e instanceof Error ? e.message : String(e)}`,
-        "pull",
-      )
-      return "error"
-    }
+    return restoreSymlinkTar(r2Config, projectPrefix, path, entry, absolutePath)
   }
 
   // Regular file — check if local copy matches
@@ -111,12 +126,14 @@ async function restoreFile(
             const mode = parseInt(entry.mode, 8).toString(8)
             const chmodProc = Bun.spawnSync(["chmod", mode, absolutePath])
             if (!chmodProc.success || chmodProc.exitCode !== 0) {
-              return "error"
+              // The content is already correct; a permission-sync failure
+              // (read-only fs, insufficient rights) should warn, not abort.
+              warn(`Could not set permissions on ${path}`, "pull")
             }
           }
         } catch {
-          // Permission set may fail on some systems
-          return "error"
+          // Permission set may fail on some systems — content is correct.
+          warn(`Could not set permissions on ${path}`, "pull")
         }
         return "cached"
       }

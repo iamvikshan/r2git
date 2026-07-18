@@ -12,13 +12,83 @@ import { info, warn, error as logError, formatSize } from "../utils/log"
 
 import type { Manifest } from "../utils/store-types"
 
+type GlobalCfg =
+  ReturnType<typeof loadGlobalConfig> extends Promise<infer T> ? T : never
+
+async function restoreSymlinkTarEntry(
+  globalConfig: GlobalCfg,
+  entry: Manifest["entries"][string],
+  r2Prefix: string,
+  absolutePath: string,
+): Promise<boolean> {
+  const data = await downloadObjectByHash(globalConfig.r2, entry.hash, r2Prefix)
+  const tmpDir = process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
+  const tmpTar = `${tmpDir}/r2git-symlink-${entry.hash}-${Date.now()}.tar`
+  const extractDir = `${tmpDir}/r2git-extract-${entry.hash}-${Date.now()}`
+  try {
+    await Bun.write(tmpTar, data)
+    Bun.spawnSync(["mkdir", "-p", extractDir])
+    const extractProc = Bun.spawnSync(["tar", "-xf", tmpTar, "-C", extractDir])
+    if (!extractProc.success) return false
+    // Validate that exactly one symlink was extracted
+    const listProc = Bun.spawnSync(["find", extractDir, "-type", "l"])
+    const symlinks = listProc.stdout
+      .toString()
+      .trim()
+      .split("\n")
+      .filter(l => l)
+    if (symlinks.length !== 1) return false
+    const extractedLink = symlinks[0]
+    if (!extractedLink) return false
+    // Ensure the destination parent exists (symlink-only nested paths
+    // may have no parent on a fresh machine), and clear any existing
+    // destination so a directory→symlink transition replaces the old
+    // directory instead of copying the link inside it.
+    const parentDir =
+      absolutePath.lastIndexOf("/") > 0
+        ? absolutePath.substring(0, absolutePath.lastIndexOf("/"))
+        : "/"
+    Bun.spawnSync(["mkdir", "-p", parentDir])
+    Bun.spawnSync(["rm", "-rf", absolutePath])
+    // Install the validated symlink at the manifest-derived absolutePath
+    const installProc = Bun.spawnSync(["cp", "-a", extractedLink, absolutePath])
+    return installProc.success
+  } finally {
+    Bun.spawnSync(["rm", "-rf", extractDir])
+    Bun.spawnSync(["rm", "-f", tmpTar])
+  }
+}
+
+async function restoreFileEntry(
+  globalConfig: GlobalCfg,
+  entry: Manifest["entries"][string],
+  r2Prefix: string,
+  absolutePath: string,
+): Promise<boolean> {
+  const data = await downloadObjectByHash(globalConfig.r2, entry.hash, r2Prefix)
+  const dir =
+    absolutePath.lastIndexOf("/") > 0
+      ? absolutePath.substring(0, absolutePath.lastIndexOf("/"))
+      : "/"
+  Bun.spawnSync(["mkdir", "-p", dir])
+  await Bun.write(absolutePath, data)
+  try {
+    const chmodProc = Bun.spawnSync([
+      "chmod",
+      parseInt(entry.mode, 8).toString(8),
+      absolutePath,
+    ])
+    return chmodProc.success && chmodProc.exitCode === 0
+  } catch {
+    return false
+  }
+}
+
 /**
  * Restore from a manifest (new format).
  */
 async function restoreFromManifest(
-  globalConfig: ReturnType<typeof loadGlobalConfig> extends Promise<infer T>
-    ? T
-    : never,
+  globalConfig: GlobalCfg,
   manifest: Manifest,
   r2Prefix: string,
   projectName: string,
@@ -34,87 +104,17 @@ async function restoreFromManifest(
   for (const [path, entry] of entries) {
     try {
       const absolutePath = resolvePath(path, ctx)
-
-      if (entry.type === "symlink-tar") {
-        const data = await downloadObjectByHash(
-          globalConfig.r2,
-          entry.hash,
-          r2Prefix,
-        )
-        const tmpDir =
-          process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
-        const tmpTar = `${tmpDir}/r2git-symlink-${entry.hash}-${Date.now()}.tar`
-        const extractDir = `${tmpDir}/r2git-extract-${entry.hash}-${Date.now()}`
-        try {
-          await Bun.write(tmpTar, data)
-          Bun.spawnSync(["mkdir", "-p", extractDir])
-          const extractProc = Bun.spawnSync([
-            "tar",
-            "-xf",
-            tmpTar,
-            "-C",
-            extractDir,
-          ])
-          if (!extractProc.success) {
-            errors++
-            continue
-          }
-          // Validate that exactly one symlink was extracted
-          const listProc = Bun.spawnSync(["find", extractDir, "-type", "l"])
-          const symlinks = listProc.stdout
-            .toString()
-            .trim()
-            .split("\n")
-            .filter(l => l)
-          if (symlinks.length !== 1) {
-            errors++
-            continue
-          }
-          const extractedLink = symlinks[0]
-          if (!extractedLink) {
-            errors++
-            continue
-          }
-          // Install the validated symlink at the manifest-derived absolutePath
-          const installProc = Bun.spawnSync([
-            "cp",
-            "-a",
-            extractedLink,
-            absolutePath,
-          ])
-          if (!installProc.success) errors++
-          else restored++
-        } finally {
-          Bun.spawnSync(["rm", "-rf", extractDir])
-          Bun.spawnSync(["rm", "-f", tmpTar])
-        }
-      } else {
-        const data = await downloadObjectByHash(
-          globalConfig.r2,
-          entry.hash,
-          r2Prefix,
-        )
-        const dir =
-          absolutePath.lastIndexOf("/") > 0
-            ? absolutePath.substring(0, absolutePath.lastIndexOf("/"))
-            : "/"
-        Bun.spawnSync(["mkdir", "-p", dir])
-        await Bun.write(absolutePath, data)
-        try {
-          const chmodProc = Bun.spawnSync([
-            "chmod",
-            parseInt(entry.mode, 8).toString(8),
-            absolutePath,
-          ])
-          if (chmodProc.success && chmodProc.exitCode === 0) {
-            restored++
-          } else {
-            errors++
-          }
-        } catch {
-          errors++
-        }
-      }
+      const ok =
+        entry.type === "symlink-tar"
+          ? await restoreSymlinkTarEntry(
+              globalConfig,
+              entry,
+              r2Prefix,
+              absolutePath,
+            )
+          : await restoreFileEntry(globalConfig, entry, r2Prefix, absolutePath)
+      if (ok) restored++
+      else errors++
     } catch (e) {
       errors++
       logError(
@@ -295,7 +295,13 @@ export async function cmdClone(projectName: string | undefined): Promise<void> {
       )
       process.exit(1)
     }
-    const configuredPaths = projectCfg?.backup.paths ?? [...DEFAULT_PATHS]
+    // Persist the restored manifest's paths as the clone's tracked paths so
+    // the next push doesn't drop them. Preconfigured project paths win when
+    // present; otherwise fall back to the manifest keys (or defaults if empty).
+    const manifestPaths = Object.keys(latest.manifest.entries)
+    const configuredPaths =
+      projectCfg?.backup.paths ??
+      (manifestPaths.length > 0 ? manifestPaths : [...DEFAULT_PATHS])
     await finishClone(name, pkgPrefix, defaultRetention, configuredPaths)
     return
   }
