@@ -1,6 +1,6 @@
 {
-  "name": "Ubuntu + Bun",
-  "image": "ghcr.io/iamvikshan/devcontainer/agents:latest",
+  "name": "bun",
+  "image": "ghcr.io/iamvikshan/devcontainer/bun:latest",
   "features": {
     "ghcr.io/devcontainers/features/sshd:1.1.0": {
       "version": "latest"
@@ -30,6 +30,6 @@
     }
   },
   "remoteUser": "root",
-  "postCreateCommand": "bun upd && bun bs --default",
+  "postCreateCommand": "bun bs --default",
   "postStartCommand": "nohup omniroute serve > /tmp/omniroute.log 2>&1 &"
 }
