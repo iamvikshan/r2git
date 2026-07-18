@@ -1,42 +1,41 @@
-import { createHash } from "node:crypto"
-import { createReadStream } from "node:fs"
-import { readFile, stat } from "node:fs/promises"
-
 /**
  * Compute SHA-256 hash of a file, streaming for large files.
  * Returns hex-encoded hash string.
  */
 export async function hashFile(filePath: string): Promise<string> {
-  const fileStat = await stat(filePath)
+  const file = Bun.file(filePath)
+  const stat = await file.stat()
 
-  // For files under 4MB, read into memory (faster for small files)
-  if (fileStat.size < 4 * 1024 * 1024) {
-    const buf = await readFile(filePath)
-    return createHash("sha256").update(buf).digest("hex")
+  if (stat.size < 4 * 1024 * 1024) {
+    const buf = await file.arrayBuffer()
+    return hashBuffer(buf)
   }
 
   // For larger files, stream to avoid memory pressure
-  return new Promise((resolve, reject) => {
-    const hash = createHash("sha256")
-    const stream = createReadStream(filePath)
-    stream.on("data", chunk => hash.update(chunk))
-    stream.on("end", () => resolve(hash.digest("hex")))
-    stream.on("error", reject)
-  })
+  const hasher = new Bun.CryptoHasher("sha256")
+  const reader = file.stream().getReader()
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    hasher.update(value)
+  }
+  return hasher.digest("hex")
 }
 
 /**
  * Compute SHA-256 hash of a buffer.
  */
 export function hashBuffer(buf: ArrayBuffer | Uint8Array): string {
-  return createHash("sha256").update(new Uint8Array(buf)).digest("hex")
+  return new Bun.CryptoHasher("sha256")
+    .update(new Uint8Array(buf))
+    .digest("hex")
 }
 
 /**
  * Compute SHA-256 hash of a string.
  */
 export function hashString(s: string): string {
-  return createHash("sha256").update(s, "utf8").digest("hex")
+  return new Bun.CryptoHasher("sha256").update(s).digest("hex")
 }
 
 /**

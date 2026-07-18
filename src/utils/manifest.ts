@@ -1,7 +1,7 @@
 import type { Manifest, ManifestEntry, ObjectType } from "./store-types"
 import { hashFile, hashBuffer } from "./hash"
-import { checkPathExists, isSymlink, isDirectory, getFileSize, type PathContext } from "./fs"
-import { lstatSync, readlinkSync } from "node:fs"
+import { checkPathExists, isSymlink, isDirectory, getFileSize } from "./fs"
+
 import { Glob } from "bun"
 
 /**
@@ -9,8 +9,11 @@ import { Glob } from "bun"
  */
 function getFileMode(filePath: string): string {
   try {
-    const mode = lstatSync(filePath).mode & 0o7777
-    return mode.toString(8).padStart(4, "0")
+    const proc = Bun.spawnSync(["stat", "-c", "%a", filePath])
+    if (proc.exitCode === 0) {
+      return proc.stdout.toString().trim().padStart(4, "0")
+    }
+    return "0644"
   } catch {
     return "0644"
   }
@@ -21,8 +24,12 @@ function getFileMode(filePath: string): string {
  */
 function getFileMTime(filePath: string): string {
   try {
-    const stat = lstatSync(filePath)
-    return stat.mtime.toISOString()
+    const proc = Bun.spawnSync(["stat", "-c", "%Y", filePath])
+    if (proc.exitCode === 0) {
+      const unix = parseInt(proc.stdout.toString().trim(), 10)
+      return new Date(unix * 1000).toISOString()
+    }
+    return new Date().toISOString()
   } catch {
     return new Date().toISOString()
   }
@@ -32,9 +39,7 @@ function getFileMTime(filePath: string): string {
  * Create a tar of a single symlink, preserving the link target.
  * Returns the tar buffer.
  */
-export async function tarSymlink(filePath: string): Promise<Uint8Array> {
-  const target = readlinkSync(filePath)
-  // Use tar to create a minimal archive with just this symlink
+export function tarSymlink(filePath: string): Uint8Array {
   const proc = Bun.spawnSync([
     "tar",
     "-cf",
@@ -45,7 +50,9 @@ export async function tarSymlink(filePath: string): Promise<Uint8Array> {
     filePath.slice(1), // strip leading /
   ])
   if (!proc.success) {
-    throw new Error(`Failed to tar symlink ${filePath}: ${proc.stderr.toString()}`)
+    throw new Error(
+      `Failed to tar symlink ${filePath}: ${proc.stderr.toString()}`,
+    )
   }
   return proc.stdout
 }
@@ -61,13 +68,13 @@ export async function buildEntry(
   const exists = await checkPathExists(absolutePath)
   if (!exists) return null
 
-  const symlink = await isSymlink(absolutePath)
+  const symlink = isSymlink(absolutePath)
   const mode = getFileMode(absolutePath)
   const mtime = getFileMTime(absolutePath)
 
   if (symlink || entryType === "symlink-tar") {
     // Tar the symlink individually
-    const tarData = await tarSymlink(absolutePath)
+    const tarData = tarSymlink(absolutePath)
     const hash = hashBuffer(tarData)
     return {
       entry: {
@@ -115,7 +122,7 @@ export async function buildManifest(
   // Expand directories into individual files
   const expandedPaths: Array<{ original: string; absolute: string }> = []
   for (const p of paths) {
-    const isDir = await isDirectory(p.absolute)
+    const isDir = isDirectory(p.absolute)
     if (isDir) {
       // Recursively expand directory into individual file entries
       try {
@@ -126,6 +133,10 @@ export async function buildManifest(
           onlyFiles: false, // Include symlinks
           dot: true,
         })) {
+          // Skip directory entries — only files and symlinks can be hashed
+          const typeProc = Bun.spawnSync(["stat", "-c", "%F", "--", entry])
+          if (typeProc.exitCode !== 0) continue
+          if (typeProc.stdout.toString().trim() === "directory") continue
           const relPath = entry.slice(p.absolute.length).replace(/^\//, "")
           const originalPath = `${p.original}/${relPath}`
           expandedPaths.push({ original: originalPath, absolute: entry })
@@ -160,15 +171,9 @@ export async function buildManifest(
     }
   }
 
-  // Generate unique timestamp with milliseconds and random suffix
-  const now = new Date()
-  const isoWithMs = now.toISOString() // Keep full precision including milliseconds
-  const randomSuffix = Math.random().toString(36).substring(2, 8)
-  const uniqueTimestamp = `${isoWithMs.replace(/:/g, "-").replace(/\./g, "-")}-${randomSuffix}`
-
   const manifest: Manifest = {
     version: 1,
-    timestamp: uniqueTimestamp,
+    timestamp: new Date().toISOString(),
     project,
     parent: parentKey,
     entries,

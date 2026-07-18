@@ -1,11 +1,6 @@
 {
   "name": "bun",
   "image": "ghcr.io/iamvikshan/devcontainer/bun:latest",
-  "features": {
-    "ghcr.io/devcontainers/features/sshd:1.1.0": {
-      "version": "latest"
-    }
-  },
   "runArgs": ["--network=host"],
   "forwardPorts": [20128],
   "portsAttributes": {
@@ -30,6 +25,5 @@
     }
   },
   "remoteUser": "root",
-  "postCreateCommand": "bun bs --default",
-  "postStartCommand": "nohup omniroute serve > /tmp/omniroute.log 2>&1 &"
+  "postCreateCommand": "bun upd && bun bs --default"
 }

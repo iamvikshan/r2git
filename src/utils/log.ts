@@ -71,10 +71,14 @@ export function printPathResult(r: PathResult): void {
       break
     }
     case "skipped":
-      console.log(`  \x1b[33m⚠\x1b[0m ${r.path} \x1b[90m(${r.reason ?? "skipped"})\x1b[0m`)
+      console.log(
+        `  \x1b[33m⚠\x1b[0m ${r.path} \x1b[90m(${r.reason ?? "skipped"})\x1b[0m`,
+      )
       break
     case "error":
-      console.log(`  \x1b[31m✖\x1b[0m ${r.path} \x1b[90m(${r.reason ?? "error"})\x1b[0m`)
+      console.log(
+        `  \x1b[31m✖\x1b[0m ${r.path} \x1b[90m(${r.reason ?? "error"})\x1b[0m`,
+      )
       break
   }
 }

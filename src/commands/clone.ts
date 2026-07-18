@@ -9,10 +9,8 @@ import { listObjects, downloadObject } from "../utils/r2"
 import { getLatestManifest, downloadObjectByHash } from "../utils/store"
 import { buildPathContext, resolvePath } from "../utils/fs"
 import { info, warn, error as logError, formatSize } from "../utils/log"
-import type { LocalConfig } from "../utils/types"
+
 import type { Manifest } from "../utils/store-types"
-import { mkdirSync, writeFileSync, chmodSync } from "node:fs"
-import { dirname } from "node:path"
 
 const TMP_TAR = "/tmp/r2git-backup.tar.gz"
 
@@ -20,7 +18,9 @@ const TMP_TAR = "/tmp/r2git-backup.tar.gz"
  * Restore from a manifest (new format).
  */
 async function restoreFromManifest(
-  globalConfig: ReturnType<typeof loadGlobalConfig> extends Promise<infer T> ? T : never,
+  globalConfig: ReturnType<typeof loadGlobalConfig> extends Promise<infer T>
+    ? T
+    : never,
   manifest: Manifest,
   r2Prefix: string,
   projectName: string,
@@ -38,21 +38,35 @@ async function restoreFromManifest(
       const absolutePath = resolvePath(path, ctx)
 
       if (entry.type === "symlink-tar") {
-        const data = await downloadObjectByHash(globalConfig.r2, entry.hash, r2Prefix)
+        const data = await downloadObjectByHash(
+          globalConfig.r2,
+          entry.hash,
+          r2Prefix,
+        )
         const tmpTar = `/tmp/r2git-symlink-${entry.hash.slice(0, 8)}.tar`
         await Bun.write(tmpTar, data)
         const proc = Bun.spawnSync(["tar", "-xf", tmpTar, "-C", "/"])
-        const { unlinkSync } = await import("node:fs")
-        try { unlinkSync(tmpTar) } catch {}
+        Bun.spawnSync(["rm", "-f", tmpTar])
         if (!proc.success) errors++
         else restored++
       } else {
-        const data = await downloadObjectByHash(globalConfig.r2, entry.hash, r2Prefix)
-        const dir = dirname(absolutePath)
-        mkdirSync(dir, { recursive: true })
-        writeFileSync(absolutePath, new Uint8Array(data))
+        const data = await downloadObjectByHash(
+          globalConfig.r2,
+          entry.hash,
+          r2Prefix,
+        )
+        const dir =
+          absolutePath.lastIndexOf("/") > 0
+            ? absolutePath.substring(0, absolutePath.lastIndexOf("/"))
+            : "/"
+        Bun.spawnSync(["mkdir", "-p", dir])
+        await Bun.write(absolutePath, data)
         try {
-          chmodSync(absolutePath, parseInt(entry.mode, 8))
+          Bun.spawnSync([
+            "chmod",
+            parseInt(entry.mode, 8).toString(8),
+            absolutePath,
+          ])
         } catch {}
         restored++
       }
@@ -77,7 +91,9 @@ async function restoreFromManifest(
  * Legacy restore from tar (backward compat).
  */
 async function restoreFromTar(
-  globalConfig: ReturnType<typeof loadGlobalConfig> extends Promise<infer T> ? T : never,
+  globalConfig: ReturnType<typeof loadGlobalConfig> extends Promise<infer T>
+    ? T
+    : never,
   key: string,
 ): Promise<void> {
   const s = p.spinner()
@@ -111,6 +127,81 @@ async function restoreFromTar(
   }
 }
 
+async function finishClone(
+  name: string,
+  pkgPrefix: string | undefined,
+  retention: number,
+  paths: string[],
+): Promise<void> {
+  await writeLocalConfig({
+    project: name,
+    backup: {
+      retention,
+      ...(pkgPrefix !== undefined && { prefix: pkgPrefix }),
+      paths,
+    },
+  })
+  p.outro(
+    "Local .r2gitconfig created. Ready to run r2git status and r2git push (^_<) ~*",
+  )
+}
+
+async function promptProjectName(): Promise<string> {
+  const typed = await p.text({
+    message: "Enter project name to clone (format: [org]/[repo])",
+    validate(val) {
+      if (!val?.trim()) return "Project name is required"
+      return undefined
+    },
+  })
+  if (p.isCancel(typed)) {
+    p.cancel("Cancelled.")
+    process.exit(0)
+  }
+  return typed as string
+}
+
+async function tryLegacyRestore(
+  global: ReturnType<typeof loadGlobalConfig> extends Promise<infer T>
+    ? T
+    : never,
+  name: string,
+  pkgPrefix: string | undefined,
+  r2Prefix: string,
+  retention: number,
+): Promise<void> {
+  const s = p.spinner()
+  s.stop("No manifest found, checking for legacy tar backups...")
+
+  try {
+    const all = await listObjects(global.r2, r2Prefix)
+    const latest = all
+      .filter(a => a.key.endsWith(".tar.gz"))
+      .sort(
+        (a, b) =>
+          new Date(b.lastModified).getTime() -
+          new Date(a.lastModified).getTime(),
+      )[0]
+
+    if (latest) {
+      info("Found legacy tar backup — restoring...", "clone")
+      await restoreFromTar(global, latest.key)
+      await finishClone(name, pkgPrefix, retention, [...DEFAULT_PATHS])
+      return
+    }
+  } catch (e) {
+    s.stop("Failed to query R2 backups.")
+    logError(e instanceof Error ? e.message : String(e), "clone")
+    process.exit(1)
+  }
+
+  s.stop("Clone failed.")
+  p.cancel(
+    `No backups found on R2 for project '${name}' under prefix '${r2Prefix}'.`,
+  )
+  process.exit(1)
+}
+
 export async function cmdClone(projectName: string | undefined): Promise<void> {
   p.intro("r2git clone")
   const global = await loadGlobalConfig()
@@ -125,100 +216,48 @@ export async function cmdClone(projectName: string | undefined): Promise<void> {
     process.exit(1)
   }
 
-  let name = projectName
-  if (!name) {
-    const typed = await p.text({
-      message: "Enter project name to clone (format: [org]/[repo])",
-      validate(val) {
-        if (!val?.trim()) return "Project name is required"
-        return undefined
-      },
-    })
-    if (p.isCancel(typed)) {
-      p.cancel("Cancelled.")
-      process.exit(0)
-    }
-    name = typed as string
-  }
+  const name = projectName ?? (await promptProjectName())
 
-  // Use configured backup prefix (if any) from global config or default
   const projectCfg = global.projects[name]
-  const pkgPrefix = projectCfg?.backup?.prefix
+  const defaultRetention = projectCfg ? projectCfg.backup.retention : 5
+  const pkgPrefix = projectCfg ? projectCfg.backup.prefix : undefined
   const r2Prefix = projectR2Prefix(name, pkgPrefix)
 
   // Try manifest-based restore first (new format)
   const s = p.spinner()
   s.start(`Looking up backups for '${name}'...`)
 
+  let latest: { manifest: Manifest; key: string } | null = null
   try {
-    const latest = await getLatestManifest(global.r2, r2Prefix)
-    if (latest) {
-      s.stop(`Found manifest: ${latest.key}`)
-      const result = await restoreFromManifest(global, latest.manifest, r2Prefix, name)
-
-      if (result.errors > 0) {
-        warn(`${result.errors} file(s) failed to restore`, "clone")
-        p.cancel(`Clone incomplete: ${result.restored} restored, ${result.errors} failed.`)
-        process.exit(1)
-      }
-
-      // Populate paths from manifest entries so subsequent status/push track everything
-      const restoredPaths = Object.keys(latest.manifest.entries)
-      const newLocal: LocalConfig = {
-        project: name,
-        backup: {
-          retention: projectCfg?.backup?.retention ?? 5,
-          ...(pkgPrefix !== undefined && { prefix: pkgPrefix }),
-          paths: restoredPaths.length > 0 ? restoredPaths : [...DEFAULT_PATHS],
-        },
-      }
-      await writeLocalConfig(newLocal)
-      p.outro(
-        "Local .r2gitconfig created. Ready to run r2git status and r2git push (^_<) ~*",
-      )
-      return
-    }
+    latest = await getLatestManifest(global.r2, r2Prefix)
   } catch {
-    // No manifests found, try legacy tar
+    // Failed to query manifests — will fall through to legacy
   }
 
-  // Fall back to legacy tar-based restore
-  s.stop("No manifest found, checking for legacy tar backups...")
-  try {
-    const all = await listObjects(global.r2, r2Prefix)
-    const latest = all
-      .filter(a => a.key.endsWith(".tar.gz"))
-      .sort(
-        (a, b) =>
-          new Date(b.lastModified).getTime() -
-          new Date(a.lastModified).getTime(),
-      )[0]
-
-    if (latest) {
-      info("Found legacy tar backup — restoring...", "clone")
-      await restoreFromTar(global, latest.key)
-      await writeLocalConfig({
-        project: name,
-        backup: {
-          retention: projectCfg?.backup?.retention ?? 5,
-          ...(pkgPrefix !== undefined && { prefix: pkgPrefix }),
-          paths: [...DEFAULT_PATHS]
-        },
-      })
-      p.outro(
-        "Local .r2gitconfig created. Ready to run r2git status and r2git push (^_<) ~*",
+  if (latest) {
+    s.stop(`Found manifest: ${latest.key}`)
+    const result = await restoreFromManifest(
+      global,
+      latest.manifest,
+      r2Prefix,
+      name,
+    )
+    if (result.errors > 0) {
+      warn(`${result.errors} file(s) failed to restore`, "clone")
+      p.cancel(
+        `Clone incomplete: ${result.restored} restored, ${result.errors} failed.`,
       )
-      return
+      process.exit(1)
     }
-  } catch (e) {
-    s.stop("Failed to query R2 backups.")
-    logError(e instanceof Error ? e.message : String(e), "clone")
-    process.exit(1)
+    const restoredPaths = Object.keys(latest.manifest.entries)
+    await finishClone(
+      name,
+      pkgPrefix,
+      defaultRetention,
+      restoredPaths.length > 0 ? restoredPaths : [...DEFAULT_PATHS],
+    )
+    return
   }
 
-  s.stop("Clone failed.")
-  p.cancel(
-    `No backups found on R2 for project '${name}' under prefix '${r2Prefix}'.`,
-  )
-  process.exit(1)
+  await tryLegacyRestore(global, name, pkgPrefix, r2Prefix, defaultRetention)
 }

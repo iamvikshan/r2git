@@ -47,11 +47,7 @@ export async function cmdRm(args: string[]): Promise<void> {
   for (const path of pathsToRemove) {
     let found = false
     // Try multiple matching strategies
-    const matchers = [
-      path,
-      `{cwd}/${path}`,
-      `{home}/${path}`,
-    ]
+    const matchers = [path, `{cwd}/${path}`, `{home}/${path}`]
 
     // Also try resolving the input to see if it matches any stored path
     const absPath = resolvePath(path, ctx)
@@ -59,7 +55,9 @@ export async function cmdRm(args: string[]): Promise<void> {
       matchers.push(`{cwd}/${absPath.slice(ctx.cwd.length).replace(/^\//, "")}`)
     }
     if (isPathUnderBase(absPath, ctx.home)) {
-      matchers.push(`{home}/${absPath.slice(ctx.home.length).replace(/^\//, "")}`)
+      matchers.push(
+        `{home}/${absPath.slice(ctx.home.length).replace(/^\//, "")}`,
+      )
     }
 
     for (const m of matchers) {

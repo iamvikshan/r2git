@@ -1,8 +1,7 @@
 import * as p from "@clack/prompts"
 import { resolveActiveProjectConfig, projectR2Prefix } from "../utils/config"
 import { getCurrentDirBasename } from "../utils/git"
-import { resolvePaths, buildPathContext } from "../utils/fs"
-import { readFile } from "node:fs/promises"
+import { resolvePaths, resolvePath, buildPathContext } from "../utils/fs"
 import { buildManifest, diffManifests } from "../utils/manifest"
 import {
   uploadObjectIfMissing,
@@ -10,7 +9,6 @@ import {
   getLatestManifest,
   enforceManifestRetention,
 } from "../utils/store"
-import { objectKey } from "../utils/hash"
 import {
   info,
   warn,
@@ -20,19 +18,8 @@ import {
   formatSize,
   type PathResult,
 } from "../utils/log"
-import { hashBuffer } from "../utils/hash"
-import type { ResolvedConfig } from "../utils/types"
+import type { R2Config, ResolvedConfig } from "../utils/types"
 import type { Manifest, PushResult } from "../utils/store-types"
-
-function utcStamp(): string {
-  const n = new Date()
-  const y = n.getUTCFullYear()
-  const m = String(n.getUTCMonth() + 1).padStart(2, "0")
-  const d = String(n.getUTCDate()).padStart(2, "0")
-  const h = String(n.getUTCHours()).padStart(2, "0")
-  const min = String(n.getUTCMinutes()).padStart(2, "0")
-  return `${y}-${m}-${d}T${h}-${min}Z`
-}
 
 /**
  * Validate paths and build local manifest.
@@ -78,7 +65,11 @@ async function buildLocalManifest(cfg: ResolvedConfig): Promise<{
   }
 
   // Build manifest from valid paths
-  const { manifest, objectDataMap, errors: buildErrors } = await buildManifest(
+  const {
+    manifest,
+    objectDataMap,
+    errors: buildErrors,
+  } = await buildManifest(
     validPaths,
     cfg.project,
     null, // parent set later
@@ -94,6 +85,125 @@ async function buildLocalManifest(cfg: ResolvedConfig): Promise<{
   }
 
   return { manifest, objectDataMap, pathResults }
+}
+
+function computeObjectsToUpload(
+  manifest: Manifest,
+  objectDataMap: Map<string, Uint8Array>,
+  remoteManifest: Manifest | null,
+): {
+  objectsToUpload: Array<{ hash: string; data?: Uint8Array }>
+  manifestNeedsUpdate: boolean
+} {
+  const objectsToUpload: Array<{ hash: string; data?: Uint8Array }> = []
+
+  if (remoteManifest) {
+    const diff = diffManifests(manifest, remoteManifest)
+    const changed = [...diff.added, ...diff.changed]
+
+    info(
+      `Changes: ${diff.added.length} added, ${diff.changed.length} changed, ${diff.removed.length} removed, ${diff.unchanged.length} unchanged`,
+      "diff",
+    )
+
+    const neededHashes = new Set<string>()
+    for (const p of changed) {
+      const entry = manifest.entries[p]
+      if (entry) neededHashes.add(entry.hash)
+    }
+    for (const hash of neededHashes) {
+      const data = objectDataMap.get(hash)
+      objectsToUpload.push({ hash, ...(data !== undefined && { data }) })
+    }
+
+    return {
+      objectsToUpload,
+      manifestNeedsUpdate:
+        diff.added.length > 0 ||
+        diff.changed.length > 0 ||
+        diff.removed.length > 0,
+    }
+  }
+
+  const seen = new Set<string>()
+  for (const entry of Object.values(manifest.entries)) {
+    if (!seen.has(entry.hash)) {
+      seen.add(entry.hash)
+      const data = objectDataMap.get(entry.hash)
+      objectsToUpload.push({
+        hash: entry.hash,
+        ...(data !== undefined && { data }),
+      })
+    }
+  }
+
+  return { objectsToUpload, manifestNeedsUpdate: true }
+}
+
+async function uploadObjects(
+  r2: R2Config,
+  r2Prefix: string,
+  manifest: Manifest,
+  objectsToUpload: Array<{ hash: string; data?: Uint8Array }>,
+  result: PushResult,
+  project: string,
+): Promise<boolean> {
+  const s3 = p.spinner()
+  s3.start(`Uploading ${objectsToUpload.length} object(s)...`)
+
+  let uploaded = 0
+  for (const obj of objectsToUpload) {
+    try {
+      let data: ArrayBuffer | Uint8Array
+      if (obj.data) {
+        data = obj.data
+      } else {
+        const entryPath = Object.entries(manifest.entries).find(
+          ([, e]) => e.hash === obj.hash,
+        )?.[0]
+        if (!entryPath) continue
+
+        data = await Bun.file(
+          resolvePath(entryPath, buildPathContext(project)),
+        ).arrayBuffer()
+      }
+
+      const wasUploaded = await uploadObjectIfMissing(
+        r2,
+        obj.hash,
+        data,
+        r2Prefix,
+      )
+      if (wasUploaded) {
+        result.uploadedBytes += new Uint8Array(data).length
+        uploaded++
+        s3.message(
+          `Uploading objects... (${uploaded}/${objectsToUpload.length}, ${formatSize(result.uploadedBytes)})`,
+        )
+      } else {
+        result.skippedObjects++
+      }
+    } catch (e) {
+      result.errors.push({
+        path: obj.hash.slice(0, 12),
+        reason: e instanceof Error ? e.message : String(e),
+      })
+      logError(
+        `Failed to upload object ${obj.hash.slice(0, 12)}…: ${e instanceof Error ? e.message : String(e)}`,
+        "upload",
+      )
+    }
+  }
+
+  s3.stop(
+    `Uploaded ${uploaded} object(s), ${result.skippedObjects} already on R2, ${formatSize(result.uploadedBytes)} transferred`,
+  )
+
+  if (result.errors.length > 0) {
+    logError(`${result.errors.length} object(s) failed to upload`, "push")
+    return false
+  }
+  return true
 }
 
 /**
@@ -137,7 +247,10 @@ async function performPush(
   const buildErrors = pathResults.filter(r => r.status === "error")
   if (buildErrors.length > 0) {
     logError(`${buildErrors.length} file(s) failed during hashing`, "push")
-    result.errors = buildErrors.map(r => ({ path: r.path, reason: r.reason ?? "unknown error" }))
+    result.errors = buildErrors.map(r => ({
+      path: r.path,
+      reason: r.reason ?? "unknown error",
+    }))
     return result
   }
 
@@ -157,7 +270,9 @@ async function performPush(
       remoteManifest = latest.manifest
       parentKey = latest.key
       manifest.parent = parentKey
-      s2.stop(`Found remote manifest (${Object.keys(latest.manifest.entries).length} entries)`)
+      s2.stop(
+        `Found remote manifest (${Object.keys(latest.manifest.entries).length} entries)`,
+      )
     } else {
       s2.stop("No previous backup found — this will be a full backup")
     }
@@ -169,40 +284,11 @@ async function performPush(
     )
   }
 
-  // Step 3: Diff to find what needs uploading
-  let objectsToUpload: Array<{ hash: string; data?: Uint8Array }> = []
-  let manifestNeedsUpdate = false
-
-  if (remoteManifest) {
-    const diff = diffManifests(manifest, remoteManifest)
-    const changed = [...diff.added, ...diff.changed]
-
-    info(
-      `Changes: ${diff.added.length} added, ${diff.changed.length} changed, ${diff.removed.length} removed, ${diff.unchanged.length} unchanged`,
-      "diff",
-    )
-
-    // Collect hashes that need uploading
-    const neededHashes = new Set(changed.map(p => manifest.entries[p]!.hash))
-    for (const hash of neededHashes) {
-      const data = objectDataMap.get(hash)
-      objectsToUpload.push({ hash, ...(data !== undefined && { data }) })
-    }
-
-    // Manifest needs update if there are added, changed, or removed entries
-    manifestNeedsUpdate = diff.added.length > 0 || diff.changed.length > 0 || diff.removed.length > 0
-  } else {
-    // Full backup — all objects needed
-    const seen = new Set<string>()
-    for (const entry of Object.values(manifest.entries)) {
-      if (!seen.has(entry.hash)) {
-        seen.add(entry.hash)
-        const data = objectDataMap.get(entry.hash)
-        objectsToUpload.push({ hash: entry.hash, ...(data !== undefined && { data }) })
-      }
-    }
-    manifestNeedsUpdate = true
-  }
+  const { objectsToUpload, manifestNeedsUpdate } = computeObjectsToUpload(
+    manifest,
+    objectDataMap,
+    remoteManifest,
+  )
 
   result.newObjects = objectsToUpload.length
 
@@ -211,62 +297,15 @@ async function performPush(
     return result
   }
 
-  // Step 4: Upload new objects
-  const s3 = p.spinner()
-  s3.start(`Uploading ${result.newObjects} object(s)...`)
-
-  let uploaded = 0
-  for (const obj of objectsToUpload) {
-    try {
-      let data = obj.data
-      if (!data) {
-        // Regular file — read from disk
-        // Find the first entry with this hash to get the file path
-        const entryPath = Object.entries(manifest.entries).find(
-          ([, e]) => e.hash === obj.hash,
-        )?.[0]
-        if (!entryPath) continue
-
-        const ctx = buildPathContext(cfg.project)
-        const { resolvePath } = await import("../utils/fs")
-        const absPath = resolvePath(entryPath, ctx)
-        data = await readFile(absPath)
-      }
-
-      const wasUploaded = await uploadObjectIfMissing(
-        cfg.r2,
-        obj.hash,
-        data,
-        r2Prefix,
-      )
-      if (wasUploaded) {
-        result.uploadedBytes += data.length
-        uploaded++
-        s3.message(`Uploading objects... (${uploaded}/${result.newObjects}, ${formatSize(result.uploadedBytes)})`)
-      } else {
-        result.skippedObjects++
-      }
-    } catch (e) {
-      result.errors.push({
-        path: obj.hash.slice(0, 12),
-        reason: e instanceof Error ? e.message : String(e),
-      })
-      logError(
-        `Failed to upload object ${obj.hash.slice(0, 12)}…: ${e instanceof Error ? e.message : String(e)}`,
-        "upload",
-      )
-    }
-  }
-
-  s3.stop(
-    `Uploaded ${uploaded} object(s), ${result.skippedObjects} already on R2, ${formatSize(result.uploadedBytes)} transferred`,
+  const uploadOk = await uploadObjects(
+    cfg.r2,
+    r2Prefix,
+    manifest,
+    objectsToUpload,
+    result,
+    cfg.project,
   )
-
-  // Check for upload errors before proceeding to manifest upload
-  if (result.errors.length > 0) {
-    logError(`${result.errors.length} object(s) failed to upload`, "push")
-    return result
-  }
+  if (!uploadOk) return result
 
   // Step 5: Upload manifest
   const s4 = p.spinner()
@@ -289,16 +328,15 @@ async function performPush(
   return result
 }
 
-export async function cmdPush(args: string[]): Promise<void> {
-  const autoName = getCurrentDirBasename()
-  const cfg = await resolveActiveProjectConfig(autoName)
-  if (!cfg.r2.accountId || !cfg.r2.accessKeyId || !cfg.r2.secretAccessKey) {
-    p.cancel(
-      "Error: Missing Cloudflare R2 credentials. Run 'r2git init' or 'r2git auth login' first.",
-    )
-    process.exit(1)
-  }
-
+function parsePushArgs(
+  args: string[],
+  cfg: ResolvedConfig,
+): {
+  retention: number
+  pkgPrefix: string | undefined
+  dryRun: boolean
+  quiet: boolean
+} {
   const keepIdx = args.indexOf("--keep")
   let retention = cfg.backup.retention
   if (keepIdx !== -1) {
@@ -320,10 +358,38 @@ export async function cmdPush(args: string[]): Promise<void> {
       ? (args[prefixIdx + 1] ?? cfg.backup.prefix)
       : cfg.backup.prefix
   const dryRun = args.includes("--dry-run") || args.includes("-n")
-  const verbose = args.includes("--verbose") || args.includes("-v")
   const quiet = args.includes("--quiet") || args.includes("-q")
 
-  if (verbose) {
+  return { retention, pkgPrefix, dryRun, quiet }
+}
+
+function printDryRun(cfg: ResolvedConfig, retention: number): void {
+  const ctx = buildPathContext(cfg.project)
+  const resolved = resolvePaths(cfg.backup.paths, ctx)
+  console.log("[dry-run] Project:", cfg.project)
+  console.log("[dry-run] Would hash and check these paths:")
+  for (const r of resolved) {
+    console.log(`  ${r.original} → ${r.absolute}`)
+  }
+  console.log("[dry-run] Would compare against latest manifest in R2")
+  console.log("[dry-run] Would upload only changed objects")
+  console.log(`[dry-run] Would retain ${retention} most recent manifests`)
+  console.log("")
+}
+
+export async function cmdPush(args: string[]): Promise<void> {
+  const autoName = getCurrentDirBasename()
+  const cfg = await resolveActiveProjectConfig(autoName)
+  if (!cfg.r2.accountId || !cfg.r2.accessKeyId || !cfg.r2.secretAccessKey) {
+    p.cancel(
+      "Error: Missing Cloudflare R2 credentials. Run 'r2git init' or 'r2git auth login' first.",
+    )
+    process.exit(1)
+  }
+
+  const { retention, pkgPrefix, dryRun, quiet } = parsePushArgs(args, cfg)
+
+  if (args.includes("--verbose") || args.includes("-v")) {
     const { setLogLevel } = await import("../utils/log")
     setLogLevel("debug")
   }
@@ -338,19 +404,7 @@ export async function cmdPush(args: string[]): Promise<void> {
   }
 
   if (dryRun) {
-    // For dry-run, just hash and show what would happen
-    const ctx = buildPathContext(cfg.project)
-    const resolved = resolvePaths(cfg.backup.paths, ctx)
-
-    console.log("[dry-run] Project:", cfg.project)
-    console.log("[dry-run] Would hash and check these paths:")
-    for (const r of resolved) {
-      console.log(`  ${r.original} → ${r.absolute}`)
-    }
-    console.log(`[dry-run] Would compare against latest manifest in R2`)
-    console.log(`[dry-run] Would upload only changed objects`)
-    console.log(`[dry-run] Would retain ${retention} most recent manifests`)
-    console.log("")
+    printDryRun(cfg, retention)
     return
   }
 
@@ -362,7 +416,8 @@ export async function cmdPush(args: string[]): Promise<void> {
   }
 
   if (result.errors.length > 0) {
-    warn(`${result.errors.length} error(s) occurred during push`, "push")
+    logError(`${result.errors.length} error(s) occurred during push`, "push")
+    process.exit(1)
   }
 
   console.log("")

@@ -4,8 +4,52 @@ import { getCurrentDirBasename } from "../utils/git"
 import { resolvePaths, buildPathContext, checkPathExists } from "../utils/fs"
 import { buildManifest, diffManifests } from "../utils/manifest"
 import { getLatestManifest } from "../utils/store"
-import { formatSize, info } from "../utils/log"
+import { formatSize } from "../utils/log"
 import type { Manifest } from "../utils/store-types"
+
+function printDiff(
+  localManifest: Manifest,
+  remoteManifest: Manifest,
+  diff: ReturnType<typeof diffManifests>,
+): void {
+  console.log(`\nDiff: local vs remote backup`)
+  console.log("─".repeat(60))
+
+  for (const p of diff.added) {
+    const entry = localManifest.entries[p]
+    console.log(
+      `  \x1b[32m+ ${p}\x1b[0m${entry ? ` (${formatSize(entry.size)})` : ""}`,
+    )
+  }
+
+  for (const p of diff.changed) {
+    const local = localManifest.entries[p]
+    const remote = remoteManifest.entries[p]
+    if (local && remote) {
+      console.log(
+        `  \x1b[33m~ ${p}\x1b[0m (${formatSize(remote.size)} → ${formatSize(local.size)})`,
+      )
+    }
+  }
+
+  for (const p of diff.removed) {
+    const entry = remoteManifest.entries[p]
+    console.log(
+      `  \x1b[36m- ${p}\x1b[0m${entry ? ` (${formatSize(entry.size)})` : ""}`,
+    )
+  }
+
+  if (diff.unchanged.length > 0) {
+    console.log(`\n\x1b[90mUnchanged: ${diff.unchanged.length} file(s)\x1b[0m`)
+  }
+
+  const hasChanges =
+    diff.added.length > 0 || diff.changed.length > 0 || diff.removed.length > 0
+  if (!hasChanges) {
+    console.log("\n\x1b[32m✔ Local files match the latest backup.\x1b[0m")
+  }
+  console.log("")
+}
 
 export async function cmdDiff(): Promise<void> {
   const autoName = getCurrentDirBasename()
@@ -49,7 +93,9 @@ export async function cmdDiff(): Promise<void> {
     const latest = await getLatestManifest(cfg.r2, r2Prefix)
     if (latest) {
       remoteManifest = latest.manifest
-      s2.stop(`Found remote manifest (${Object.keys(latest.manifest.entries).length} entries)`)
+      s2.stop(
+        `Found remote manifest (${Object.keys(latest.manifest.entries).length} entries)`,
+      )
     } else {
       s2.stop("No remote backups found.")
       console.log("\nNo remote backups to compare against.\n")
@@ -63,51 +109,5 @@ export async function cmdDiff(): Promise<void> {
 
   // Diff
   const diff = diffManifests(localManifest, remoteManifest)
-
-  console.log(`\nDiff: local vs remote backup`)
-  console.log("─".repeat(60))
-
-  if (diff.added.length > 0) {
-    console.log(`\n\x1b[32mAdded (local only, not in backup):\x1b[0m`)
-    for (const p of diff.added) {
-      const entry = localManifest.entries[p]
-      console.log(`  + ${p} ${entry ? `(${formatSize(entry.size)})` : ""}`)
-    }
-  }
-
-  if (diff.changed.length > 0) {
-    console.log(`\n\x1b[33mChanged (content differs):\x1b[0m`)
-    for (const p of diff.changed) {
-      const local = localManifest.entries[p]
-      const remote = remoteManifest.entries[p]
-      if (local && remote) {
-        console.log(
-          `  ~ ${p} (${formatSize(remote.size)} → ${formatSize(local.size)})`,
-        )
-      }
-    }
-  }
-
-  if (diff.removed.length > 0) {
-    console.log(`\n\x1b[36mRemoved (in backup but not local):\x1b[0m`)
-    for (const p of diff.removed) {
-      const entry = remoteManifest.entries[p]
-      console.log(`  - ${p} ${entry ? `(${formatSize(entry.size)})` : ""}`)
-    }
-  }
-
-  if (diff.unchanged.length > 0) {
-    console.log(`\n\x1b[90mUnchanged: ${diff.unchanged.length} file(s)\x1b[0m`)
-  }
-
-  const hasChanges =
-    diff.added.length > 0 ||
-    diff.changed.length > 0 ||
-    diff.removed.length > 0
-
-  if (!hasChanges) {
-    console.log("\n\x1b[32m✔ Local files match the latest backup.\x1b[0m")
-  }
-
-  console.log("")
+  printDiff(localManifest, remoteManifest, diff)
 }

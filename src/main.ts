@@ -48,7 +48,18 @@ PUSH/PULL FLAGS
   process.exit(status)
 }
 
-type CommandRunner = (args: string[], verboseFlag?: boolean) => Promise<void> | void
+type CommandRunner = (
+  args: string[],
+  verboseFlag?: boolean,
+) => Promise<void> | void
+
+function verboseArgs(
+  cmd: (args: string[]) => Promise<void>,
+): (args: string[], verboseFlag?: boolean) => Promise<void> {
+  return async (args, verboseFlag) => {
+    await cmd(verboseFlag ? [...args, "--verbose"] : args)
+  }
+}
 
 const commandRegistry: Record<string, CommandRunner> = {
   init: async () => {
@@ -78,27 +89,9 @@ const commandRegistry: Record<string, CommandRunner> = {
   restore: async args => {
     await cmdPull(args)
   },
-  log: async (args, verboseFlag) => {
-    // Restore verbose flag if it was set globally
-    const argsWithVerbose = verboseFlag && !args.includes("-v") && !args.includes("--verbose")
-      ? [...args, "--verbose"]
-      : args
-    await cmdLog(argsWithVerbose)
-  },
-  history: async (args, verboseFlag) => {
-    // Restore verbose flag if it was set globally
-    const argsWithVerbose = verboseFlag && !args.includes("-v") && !args.includes("--verbose")
-      ? [...args, "--verbose"]
-      : args
-    await cmdLog(argsWithVerbose)
-  },
-  list: async (args, verboseFlag) => {
-    // Restore verbose flag if it was set globally
-    const argsWithVerbose = verboseFlag && !args.includes("-v") && !args.includes("--verbose")
-      ? [...args, "--verbose"]
-      : args
-    await cmdLog(argsWithVerbose)
-  },
+  log: verboseArgs(cmdLog),
+  history: verboseArgs(cmdLog),
+  list: verboseArgs(cmdLog),
   clone: async args => {
     await cmdClone(args[0])
   },

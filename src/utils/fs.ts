@@ -56,10 +56,22 @@ export function resolvePath(input: string, ctx: PathContext): string {
   }
 
   // Variable substitution (order matters — do longest matches first)
-  resolved = resolved.replace(/\{xdg_config\}/g, process.env.XDG_CONFIG_HOME ?? `${ctx.home}/.config`)
-  resolved = resolved.replace(/\{xdg_data\}/g, process.env.XDG_DATA_HOME ?? `${ctx.home}/.local/share`)
-  resolved = resolved.replace(/\{xdg_cache\}/g, process.env.XDG_CACHE_HOME ?? `${ctx.home}/.cache`)
-  resolved = resolved.replace(/\{tmp\}/g, process.env.TMPDIR ?? process.env.TEMP ?? "/tmp")
+  resolved = resolved.replace(
+    /\{xdg_config\}/g,
+    process.env.XDG_CONFIG_HOME ?? `${ctx.home}/.config`,
+  )
+  resolved = resolved.replace(
+    /\{xdg_data\}/g,
+    process.env.XDG_DATA_HOME ?? `${ctx.home}/.local/share`,
+  )
+  resolved = resolved.replace(
+    /\{xdg_cache\}/g,
+    process.env.XDG_CACHE_HOME ?? `${ctx.home}/.cache`,
+  )
+  resolved = resolved.replace(
+    /\{tmp\}/g,
+    process.env.TMPDIR ?? process.env.TEMP ?? "/tmp",
+  )
   resolved = resolved.replace(/\{home\}/g, ctx.home)
   resolved = resolved.replace(/\{cwd\}/g, ctx.cwd)
   if (ctx.project) {
@@ -114,29 +126,24 @@ export async function checkPathExists(absolutePath: string): Promise<boolean> {
 }
 
 /**
- * Check if a path is a symlink.
+ * Check if a path is a symlink (works for dangling symlinks too).
  */
-export async function isSymlink(absolutePath: string): Promise<boolean> {
+export function isSymlink(absolutePath: string): boolean {
   try {
-    const stat = await Bun.file(absolutePath).exists()
-    if (!stat) return false
-    // Bun doesn't have lstat directly, use fs
-    const { lstatSync } = await import("node:fs")
-    const s = lstatSync(absolutePath)
-    return s.isSymbolicLink()
+    const proc = Bun.spawnSync(["test", "-L", "--", absolutePath])
+    return proc.exitCode === 0
   } catch {
     return false
   }
 }
 
 /**
- * Check if a path is a directory.
+ * Check if a path is a directory (follows symlinks).
  */
-export async function isDirectory(absolutePath: string): Promise<boolean> {
+export function isDirectory(absolutePath: string): boolean {
   try {
-    const { statSync } = await import("node:fs")
-    const s = statSync(absolutePath)
-    return s.isDirectory()
+    const proc = Bun.spawnSync(["test", "-d", "--", absolutePath])
+    return proc.exitCode === 0
   } catch {
     return false
   }
@@ -145,7 +152,9 @@ export async function isDirectory(absolutePath: string): Promise<boolean> {
 /**
  * Get file size in bytes. Returns null if file doesn't exist.
  */
-export async function getFileSize(absolutePath: string): Promise<number | null> {
+export async function getFileSize(
+  absolutePath: string,
+): Promise<number | null> {
   try {
     const file = Bun.file(absolutePath)
     if (await file.exists()) {
