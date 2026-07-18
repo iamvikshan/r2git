@@ -12,8 +12,6 @@ import { info, warn, error as logError, formatSize } from "../utils/log"
 
 import type { Manifest } from "../utils/store-types"
 
-const TMP_TAR = "/tmp/r2git-backup.tar.gz"
-
 /**
  * Restore from a manifest (new format).
  */
@@ -43,12 +41,53 @@ async function restoreFromManifest(
           entry.hash,
           r2Prefix,
         )
-        const tmpTar = `/tmp/r2git-symlink-${entry.hash.slice(0, 8)}.tar`
-        await Bun.write(tmpTar, data)
-        const proc = Bun.spawnSync(["tar", "-xf", tmpTar, "-C", "/"])
-        Bun.spawnSync(["rm", "-f", tmpTar])
-        if (!proc.success) errors++
-        else restored++
+        const tmpDir =
+          process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
+        const tmpTar = `${tmpDir}/r2git-symlink-${entry.hash}-${Date.now()}.tar`
+        const extractDir = `${tmpDir}/r2git-extract-${entry.hash}-${Date.now()}`
+        try {
+          await Bun.write(tmpTar, data)
+          Bun.spawnSync(["mkdir", "-p", extractDir])
+          const extractProc = Bun.spawnSync([
+            "tar",
+            "-xf",
+            tmpTar,
+            "-C",
+            extractDir,
+          ])
+          if (!extractProc.success) {
+            errors++
+            continue
+          }
+          // Validate that exactly one symlink was extracted
+          const listProc = Bun.spawnSync(["find", extractDir, "-type", "l"])
+          const symlinks = listProc.stdout
+            .toString()
+            .trim()
+            .split("\n")
+            .filter(l => l)
+          if (symlinks.length !== 1) {
+            errors++
+            continue
+          }
+          const extractedLink = symlinks[0]
+          if (!extractedLink) {
+            errors++
+            continue
+          }
+          // Install the validated symlink at the manifest-derived absolutePath
+          const installProc = Bun.spawnSync([
+            "cp",
+            "-a",
+            extractedLink,
+            absolutePath,
+          ])
+          if (!installProc.success) errors++
+          else restored++
+        } finally {
+          Bun.spawnSync(["rm", "-rf", extractDir])
+          Bun.spawnSync(["rm", "-f", tmpTar])
+        }
       } else {
         const data = await downloadObjectByHash(
           globalConfig.r2,
@@ -62,13 +101,19 @@ async function restoreFromManifest(
         Bun.spawnSync(["mkdir", "-p", dir])
         await Bun.write(absolutePath, data)
         try {
-          Bun.spawnSync([
+          const chmodProc = Bun.spawnSync([
             "chmod",
             parseInt(entry.mode, 8).toString(8),
             absolutePath,
           ])
-        } catch {}
-        restored++
+          if (chmodProc.success && chmodProc.exitCode === 0) {
+            restored++
+          } else {
+            errors++
+          }
+        } catch {
+          errors++
+        }
       }
     } catch (e) {
       errors++
@@ -98,9 +143,11 @@ async function restoreFromTar(
 ): Promise<void> {
   const s = p.spinner()
   s.message("Downloading project backup...")
+  const tmpDir = process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
+  const tmpTar = `${tmpDir}/r2git-backup-${Date.now()}.tar.gz`
   try {
     const buf = await downloadObject(globalConfig.r2, key)
-    await Bun.write(TMP_TAR, buf)
+    await Bun.write(tmpTar, buf)
     info(`Downloaded ${formatSize(buf.byteLength)}`, "clone")
   } catch (e) {
     s.stop("Download failed.")
@@ -110,7 +157,7 @@ async function restoreFromTar(
 
   s.message("Extracting project files...")
   try {
-    const proc = Bun.spawnSync(["tar", "-xzf", TMP_TAR, "-C", "/"])
+    const proc = Bun.spawnSync(["tar", "-xzf", tmpTar, "-C", "/"])
     if (!proc.success) {
       s.stop("Extraction failed.")
       const stderr = proc.stderr.toString().trim()
@@ -119,11 +166,10 @@ async function restoreFromTar(
           logError(`  ${line}`, "tar")
         }
       }
-      Bun.spawnSync(["rm", "-f", TMP_TAR])
       process.exit(1)
     }
   } finally {
-    Bun.spawnSync(["rm", "-f", TMP_TAR])
+    Bun.spawnSync(["rm", "-f", tmpTar])
   }
 }
 
@@ -249,13 +295,8 @@ export async function cmdClone(projectName: string | undefined): Promise<void> {
       )
       process.exit(1)
     }
-    const restoredPaths = Object.keys(latest.manifest.entries)
-    await finishClone(
-      name,
-      pkgPrefix,
-      defaultRetention,
-      restoredPaths.length > 0 ? restoredPaths : [...DEFAULT_PATHS],
-    )
+    const configuredPaths = projectCfg?.backup.paths ?? [...DEFAULT_PATHS]
+    await finishClone(name, pkgPrefix, defaultRetention, configuredPaths)
     return
   }
 

@@ -130,7 +130,7 @@ export async function checkPathExists(absolutePath: string): Promise<boolean> {
  */
 export function isSymlink(absolutePath: string): boolean {
   try {
-    const proc = Bun.spawnSync(["test", "-L", "--", absolutePath])
+    const proc = Bun.spawnSync(["test", "-L", absolutePath])
     return proc.exitCode === 0
   } catch {
     return false
@@ -142,7 +142,7 @@ export function isSymlink(absolutePath: string): boolean {
  */
 export function isDirectory(absolutePath: string): boolean {
   try {
-    const proc = Bun.spawnSync(["test", "-d", "--", absolutePath])
+    const proc = Bun.spawnSync(["test", "-d", absolutePath])
     return proc.exitCode === 0
   } catch {
     return false

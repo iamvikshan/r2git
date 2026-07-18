@@ -151,6 +151,13 @@ async function uploadObjects(
   const s3 = p.spinner()
   s3.start(`Uploading ${objectsToUpload.length} object(s)...`)
 
+  // Build hash-to-path lookup once before iteration
+  const hashToPath = new Map<string, string>()
+  for (const [path, entry] of Object.entries(manifest.entries)) {
+    hashToPath.set(entry.hash, path)
+  }
+  const pathContext = buildPathContext(project)
+
   let uploaded = 0
   for (const obj of objectsToUpload) {
     try {
@@ -158,14 +165,10 @@ async function uploadObjects(
       if (obj.data) {
         data = obj.data
       } else {
-        const entryPath = Object.entries(manifest.entries).find(
-          ([, e]) => e.hash === obj.hash,
-        )?.[0]
+        const entryPath = hashToPath.get(obj.hash)
         if (!entryPath) continue
 
-        data = await Bun.file(
-          resolvePath(entryPath, buildPathContext(project)),
-        ).arrayBuffer()
+        data = await Bun.file(resolvePath(entryPath, pathContext)).arrayBuffer()
       }
 
       const wasUploaded = await uploadObjectIfMissing(
@@ -194,6 +197,8 @@ async function uploadObjects(
       )
     }
   }
+
+  result.newObjects = uploaded
 
   s3.stop(
     `Uploaded ${uploaded} object(s), ${result.skippedObjects} already on R2, ${formatSize(result.uploadedBytes)} transferred`,
@@ -290,10 +295,17 @@ async function performPush(
     remoteManifest,
   )
 
-  result.newObjects = objectsToUpload.length
-
-  if (result.newObjects === 0 && !manifestNeedsUpdate) {
+  if (objectsToUpload.length === 0 && !manifestNeedsUpdate) {
     info("No changes detected — nothing to upload", "push")
+    // Set manifestKey for summary
+    if (parentKey) {
+      result.manifestKey = parentKey
+    }
+    // Run retention cleanup if --keep is specified
+    const cleaned = await enforceManifestRetention(cfg.r2, r2Prefix, retention)
+    if (cleaned > 0) {
+      info(`Cleaned up ${cleaned} old manifest(s)`, "retention")
+    }
     return result
   }
 
@@ -353,10 +365,15 @@ function parsePushArgs(
     retention = parsed
   }
   const prefixIdx = args.indexOf("--prefix")
-  const pkgPrefix =
-    prefixIdx !== -1
-      ? (args[prefixIdx + 1] ?? cfg.backup.prefix)
-      : cfg.backup.prefix
+  let pkgPrefix = cfg.backup.prefix
+  if (prefixIdx !== -1) {
+    const prefixValue = args[prefixIdx + 1]
+    if (!prefixValue || prefixValue.startsWith("-")) {
+      p.cancel("Error: --prefix requires a value")
+      process.exit(1)
+    }
+    pkgPrefix = prefixValue
+  }
   const dryRun = args.includes("--dry-run") || args.includes("-n")
   const quiet = args.includes("--quiet") || args.includes("-q")
 

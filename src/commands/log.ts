@@ -46,19 +46,19 @@ async function printManifestEntry(
   console.log("─".repeat(70))
 }
 
-function printManifests(
+async function printManifests(
   project: string,
   r2: R2Config,
   manifests: Array<{ key: string; lastModified: string; size: number }>,
   detailed: boolean,
-): void {
+): Promise<void> {
   if (manifests.length === 0) return
   console.log(
     `\nHistory for project "${project}" (${manifests.length} manifest backups):`,
   )
   console.log("─".repeat(70))
   for (const m of manifests) {
-    void printManifestEntry(m, r2, detailed)
+    await printManifestEntry(m, r2, detailed)
   }
 }
 
@@ -165,7 +165,7 @@ export async function cmdLog(args: string[]): Promise<void> {
 
   const { manifests, legacyBackups } = await listBackups(cfg, r2Prefix)
 
-  printManifests(cfg.project, cfg.r2, manifests, detailed)
+  await printManifests(cfg.project, cfg.r2, manifests, detailed)
   printLegacyBackups(cfg.project, manifests, legacyBackups)
 
   if (manifests.length === 0 && legacyBackups.length === 0) {

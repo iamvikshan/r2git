@@ -142,42 +142,44 @@ async function gcUnreferencedObjects(
   projectPrefix: string,
   referencedHashes: Set<string>,
 ): Promise<void> {
+  let allObjects: Array<{ key: string; lastModified: string; size: number }>
   try {
-    const allObjects = await listObjects(r2, `${projectPrefix}objects/`)
-    let gcDeleted = 0
-
-    for (const obj of allObjects) {
-      const parts = obj.key.split("/")
-      const hash =
-        parts.length >= 3
-          ? (parts[parts.length - 2] ?? "") + (parts[parts.length - 1] ?? "")
-          : ""
-
-      if (hash && !referencedHashes.has(hash)) {
-        try {
-          await deleteObject(r2, obj.key)
-          gcDeleted++
-          debug(
-            `GC deleted unreferenced object: ${hash.slice(0, 12)}…`,
-            "retention",
-          )
-        } catch (e) {
-          debug(
-            `Failed to delete object ${obj.key}: ${e instanceof Error ? e.message : String(e)}`,
-            "retention",
-          )
-        }
-      }
-    }
-
-    if (gcDeleted > 0) {
-      info(`Garbage collected ${gcDeleted} unreferenced object(s)`, "retention")
-    }
+    allObjects = await listObjects(r2, `${projectPrefix}objects/`)
   } catch (e) {
     debug(
-      `Failed to list objects for GC: ${e instanceof Error ? e.message : String(e)}`,
+      `Failed to list objects for GC, aborting: ${e instanceof Error ? e.message : String(e)}`,
       "retention",
     )
+    return
+  }
+
+  let gcDeleted = 0
+  for (const obj of allObjects) {
+    const parts = obj.key.split("/")
+    const hash =
+      parts.length >= 3
+        ? (parts[parts.length - 2] ?? "") + (parts[parts.length - 1] ?? "")
+        : ""
+
+    if (hash && !referencedHashes.has(hash)) {
+      try {
+        await deleteObject(r2, obj.key)
+        gcDeleted++
+        debug(
+          `GC deleted unreferenced object: ${hash.slice(0, 12)}…`,
+          "retention",
+        )
+      } catch (e) {
+        debug(
+          `Failed to delete object ${obj.key}: ${e instanceof Error ? e.message : String(e)}`,
+          "retention",
+        )
+      }
+    }
+  }
+
+  if (gcDeleted > 0) {
+    info(`Garbage collected ${gcDeleted} unreferenced object(s)`, "retention")
   }
 }
 
@@ -189,7 +191,17 @@ export async function enforceManifestRetention(
   projectPrefix: string,
   retention: number,
 ): Promise<number> {
-  const manifests = await listManifests(r2, projectPrefix)
+  let manifests: Array<{ key: string; lastModified: string; size: number }>
+  try {
+    manifests = await listManifests(r2, projectPrefix)
+  } catch (e) {
+    debug(
+      `Failed to list manifests for retention, aborting: ${e instanceof Error ? e.message : String(e)}`,
+      "retention",
+    )
+    return 0
+  }
+
   if (manifests.length <= retention) return 0
 
   const stale = manifests.slice(retention)
@@ -208,13 +220,24 @@ export async function enforceManifestRetention(
     } catch (e) {
       retainedReadFailed = true
       debug(
-        `Failed to read manifest ${m.key} for GC: ${e instanceof Error ? e.message : String(e)}`,
+        `Failed to read manifest ${m.key} for GC, aborting object cleanup: ${e instanceof Error ? e.message : String(e)}`,
         "retention",
       )
+      // Abort object cleanup to prevent incomplete snapshot
+      break
     }
   }
 
-  // Delete stale manifests (safe even if retained reads failed)
+  // Abort deletion if we couldn't read all retained manifests
+  if (retainedReadFailed) {
+    debug(
+      "Aborting retention cleanup: incomplete manifest snapshot",
+      "retention",
+    )
+    return 0
+  }
+
+  // Delete stale manifests (only if we have a complete snapshot)
   for (const m of stale) {
     try {
       await deleteObject(r2, m.key)
@@ -222,13 +245,16 @@ export async function enforceManifestRetention(
       info(`Deleted old manifest: ${m.key}`, "retention")
     } catch (e) {
       debug(
-        `Failed to delete manifest ${m.key}: ${e instanceof Error ? e.message : String(e)}`,
+        `Failed to delete manifest ${m.key}, aborting: ${e instanceof Error ? e.message : String(e)}`,
         "retention",
       )
+      // Abort if we can't delete a stale manifest
+      return deleted
     }
   }
 
-  if (!retainedReadFailed) {
+  // Only run GC if we successfully deleted all stale manifests
+  if (deleted === stale.length) {
     await gcUnreferencedObjects(r2, projectPrefix, referencedHashes)
   }
 

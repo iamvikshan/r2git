@@ -34,16 +34,59 @@ async function restoreFile(
         entry.hash,
         projectPrefix,
       )
-      // Write tar to temp and extract
-      const tmpTar = `/tmp/r2git-symlink-${entry.hash.slice(0, 8)}.tar`
-      await Bun.write(tmpTar, data)
-      const proc = Bun.spawnSync(["tar", "-xf", tmpTar, "-C", "/"])
-      Bun.spawnSync(["rm", "-f", tmpTar])
-      if (!proc.success) {
-        logError(`Failed to extract symlink tar for ${path}`, "pull")
-        return "error"
+      // Write tar to temp and extract into isolated directory
+      const tmpDir = process.env.TMPDIR ?? process.env.TEMP ?? "/tmp"
+      const tmpTar = `${tmpDir}/r2git-symlink-${entry.hash}-${Date.now()}.tar`
+      const extractDir = `${tmpDir}/r2git-extract-${entry.hash}-${Date.now()}`
+      try {
+        await Bun.write(tmpTar, data)
+        Bun.spawnSync(["mkdir", "-p", extractDir])
+        const extractProc = Bun.spawnSync([
+          "tar",
+          "-xf",
+          tmpTar,
+          "-C",
+          extractDir,
+        ])
+        if (!extractProc.success) {
+          logError(`Failed to extract symlink tar for ${path}`, "pull")
+          return "error"
+        }
+        // Validate that exactly one symlink was extracted
+        const listProc = Bun.spawnSync(["find", extractDir, "-type", "l"])
+        const symlinks = listProc.stdout
+          .toString()
+          .trim()
+          .split("\n")
+          .filter(l => l)
+        if (symlinks.length !== 1) {
+          logError(
+            `Invalid symlink archive for ${path}: expected 1 symlink, found ${symlinks.length}`,
+            "pull",
+          )
+          return "error"
+        }
+        const extractedLink = symlinks[0]
+        if (!extractedLink) {
+          logError(`No symlink found in archive for ${path}`, "pull")
+          return "error"
+        }
+        // Install the validated symlink at the manifest-derived absolutePath
+        const installProc = Bun.spawnSync([
+          "cp",
+          "-a",
+          extractedLink,
+          absolutePath,
+        ])
+        if (!installProc.success) {
+          logError(`Failed to install symlink for ${path}`, "pull")
+          return "error"
+        }
+        return "restored"
+      } finally {
+        Bun.spawnSync(["rm", "-rf", extractDir])
+        Bun.spawnSync(["rm", "-f", tmpTar])
       }
-      return "restored"
     } catch (e) {
       logError(
         `Failed to restore symlink ${path}: ${e instanceof Error ? e.message : String(e)}`,
@@ -66,10 +109,14 @@ async function restoreFile(
             Bun.spawnSync(["test", "-L", absolutePath]).exitCode === 0
           if (!isLink) {
             const mode = parseInt(entry.mode, 8).toString(8)
-            Bun.spawnSync(["chmod", mode, absolutePath])
+            const chmodProc = Bun.spawnSync(["chmod", mode, absolutePath])
+            if (!chmodProc.success || chmodProc.exitCode !== 0) {
+              return "error"
+            }
           }
         } catch {
           // Permission set may fail on some systems
+          return "error"
         }
         return "cached"
       }
@@ -95,9 +142,13 @@ async function restoreFile(
     // Set permissions
     try {
       const mode = parseInt(entry.mode, 8).toString(8)
-      Bun.spawnSync(["chmod", mode, absolutePath])
+      const chmodProc = Bun.spawnSync(["chmod", mode, absolutePath])
+      if (!chmodProc.success || chmodProc.exitCode !== 0) {
+        return "error"
+      }
     } catch {
       // Permission set may fail on some systems
+      return "error"
     }
 
     return "restored"

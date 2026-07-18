@@ -65,17 +65,15 @@ export async function buildEntry(
   absolutePath: string,
   entryType?: ObjectType,
 ): Promise<{ entry: ManifestEntry; objectData: Uint8Array | null } | null> {
-  const exists = await checkPathExists(absolutePath)
-  if (!exists) return null
-
+  // Check if symlink first, before existence check (to catch dangling symlinks)
   const symlink = isSymlink(absolutePath)
-  const mode = getFileMode(absolutePath)
-  const mtime = getFileMTime(absolutePath)
 
   if (symlink || entryType === "symlink-tar") {
-    // Tar the symlink individually
+    // Tar the symlink individually (works for dangling symlinks too)
     const tarData = tarSymlink(absolutePath)
     const hash = hashBuffer(tarData)
+    const mode = getFileMode(absolutePath)
+    const mtime = getFileMTime(absolutePath)
     return {
       entry: {
         hash,
@@ -88,7 +86,13 @@ export async function buildEntry(
     }
   }
 
+  // For non-symlinks, check existence
+  const exists = await checkPathExists(absolutePath)
+  if (!exists) return null
+
   // Regular file — hash content, data will be read on upload
+  const mode = getFileMode(absolutePath)
+  const mtime = getFileMTime(absolutePath)
   const size = (await getFileSize(absolutePath)) ?? 0
   const hash = await hashFile(absolutePath)
   return {
@@ -122,6 +126,14 @@ export async function buildManifest(
   // Expand directories into individual files
   const expandedPaths: Array<{ original: string; absolute: string }> = []
   for (const p of paths) {
+    // Check if symlink first, before directory check
+    const symlink = isSymlink(p.absolute)
+    if (symlink) {
+      // Symlinks (including those targeting directories) are stored as symlink-tar
+      expandedPaths.push(p)
+      continue
+    }
+
     const isDir = isDirectory(p.absolute)
     if (isDir) {
       // Recursively expand directory into individual file entries
@@ -134,8 +146,14 @@ export async function buildManifest(
           dot: true,
         })) {
           // Skip directory entries — only files and symlinks can be hashed
-          const typeProc = Bun.spawnSync(["stat", "-c", "%F", "--", entry])
-          if (typeProc.exitCode !== 0) continue
+          const typeProc = Bun.spawnSync(["stat", "-c", "%F", entry])
+          if (typeProc.exitCode !== 0) {
+            errors.push({
+              path: entry,
+              reason: "Failed to determine file type",
+            })
+            continue
+          }
           if (typeProc.stdout.toString().trim() === "directory") continue
           const relPath = entry.slice(p.absolute.length).replace(/^\//, "")
           const originalPath = `${p.original}/${relPath}`
