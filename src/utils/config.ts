@@ -28,6 +28,7 @@ export function defaultProject(_name: string): ProjectConfig {
     backup: {
       retention: 5,
       paths: [...DEFAULT_PATHS],
+      ignores: [],
     },
   }
 }
@@ -35,23 +36,57 @@ export function defaultProject(_name: string): ProjectConfig {
 export async function loadWorkspaceEnv(): Promise<void> {
   const file = Bun.file(`${process.cwd()}/.env`)
   if (await file.exists()) {
-    const text = await file.text()
-    for (const line of text.split("\n")) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith("#")) continue
-      const idx = trimmed.indexOf("=")
-      if (idx !== -1) {
-        const k = trimmed.slice(0, idx).trim()
-        const v = trimmed.slice(idx + 1).trim()
-        const val =
-          (v.startsWith('"') && v.endsWith('"')) ||
-          (v.startsWith("'") && v.endsWith("'"))
-            ? v.slice(1, -1)
-            : v
-        process.env[k] = val
-      }
+    const env = parseEnvFile(await file.text())
+    for (const [k, v] of Object.entries(env)) {
+      process.env[k] = v
     }
   }
+}
+
+function parseEnvFile(text: string): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith("#")) continue
+    const idx = trimmed.indexOf("=")
+    if (idx !== -1) {
+      const k = trimmed.slice(0, idx).trim()
+      const v = trimmed.slice(idx + 1).trim()
+      const val =
+        (v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))
+          ? v.slice(1, -1)
+          : v
+      env[k] = val
+    }
+  }
+  return env
+}
+
+/**
+ * Detect R2 credentials in a .env file.
+ * Returns the found credentials or null if none found.
+ */
+export async function detectEnvCredentials(): Promise<{
+  accountId: string
+  accessKeyId: string
+  secretAccessKey: string
+  bucket: string
+} | null> {
+  const file = Bun.file(`${process.cwd()}/.env`)
+  if (!(await file.exists())) return null
+
+  const env = parseEnvFile(await file.text())
+
+  const accountId = env.R2_ACCOUNT_ID ?? env.CLOUDFLARE_ACCOUNT_ID
+  const accessKeyId = env.R2_ACCESS_KEY_ID ?? env.CLOUDFLARE_ACCESS_KEY_ID
+  const secretAccessKey =
+    env.R2_SECRET_ACCESS_KEY ?? env.CLOUDFLARE_SECRET_ACCESS_KEY
+  const bucket = env.R2_BUCKET ?? env.CLOUDFLARE_R2_BUCKET
+
+  if (!accountId || !accessKeyId || !secretAccessKey) return null
+
+  return { accountId, accessKeyId, secretAccessKey, bucket: bucket ?? "r2git" }
 }
 
 export function defaultConfig(): GlobalConfig {
@@ -117,7 +152,6 @@ type RawGlobalConfig = {
 }
 
 export async function loadGlobalConfig(): Promise<GlobalConfig> {
-  await loadWorkspaceEnv()
   await migrateLegacyConfig()
   const file = Bun.file(configFilePath())
   const exists = await file.exists()
@@ -183,6 +217,9 @@ export async function loadLocalConfig(): Promise<LocalConfig | null> {
       paths: Array.isArray(backup.paths)
         ? (backup.paths as string[])
         : [...DEFAULT_PATHS],
+      ignores: Array.isArray((backup as { ignores?: unknown }).ignores)
+        ? (backup as { ignores: string[] }).ignores
+        : [],
     }
     if (typeof backup.prefix === "string") {
       resBackup.prefix = backup.prefix
@@ -199,7 +236,6 @@ export async function loadLocalConfig(): Promise<LocalConfig | null> {
 export async function resolveActiveProjectConfig(
   autoName: string,
 ): Promise<ResolvedConfig> {
-  await loadWorkspaceEnv()
   const global = await loadGlobalConfig()
   const local = await loadLocalConfig()
 

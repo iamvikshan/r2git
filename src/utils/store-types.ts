@@ -22,8 +22,8 @@ export type Manifest = {
   version: 1
   timestamp: string
   project: string
-  /** Previous manifest key (for history chain) */
-  parent: string | null
+  /** R2 key of the tar.gz archive containing all objects */
+  archiveKey: string
   entries: Record<string, ManifestEntry>
 }
 

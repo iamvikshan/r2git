@@ -37,14 +37,3 @@ export function hashBuffer(buf: ArrayBuffer | Uint8Array): string {
 export function hashString(s: string): string {
   return new Bun.CryptoHasher("sha256").update(s).digest("hex")
 }
-
-/**
- * Get the R2 object key for a given hash.
- * Uses first 2 chars as directory prefix to avoid flat listing issues.
- * e.g. "a38f2c...d4" → "objects/a3/8f2c...d4"
- */
-export function objectKey(hash: string, projectPrefix: string): string {
-  const dir = hash.slice(0, 2)
-  const rest = hash.slice(2)
-  return `${projectPrefix}objects/${dir}/${rest}`
-}

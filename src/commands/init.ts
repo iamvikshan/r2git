@@ -3,8 +3,10 @@ import {
   loadGlobalConfig,
   loadLocalConfig,
   writeLocalConfig,
+  writeGlobalConfig,
   LOCAL_CONFIG_FILENAME,
   DEFAULT_PATHS,
+  detectEnvCredentials,
 } from "../utils/config"
 import {
   getCurrentDirBasename,
@@ -23,6 +25,35 @@ function handleGitSetup(): void {
   }
   Bun.spawnSync(["git", "add", LOCAL_CONFIG_FILENAME])
   p.note(`Staged ${LOCAL_CONFIG_FILENAME} in Git.`, "Git")
+}
+
+async function promptIgnores(local: LocalConfig | null): Promise<string[]> {
+  const existingIgnores = local?.backup.ignores ?? []
+  const addIgnores = await p.confirm({
+    message: "Do you want to add ignore patterns for tracked directories?",
+    initialValue: existingIgnores.length > 0,
+  })
+  if (p.isCancel(addIgnores)) {
+    p.cancel("Cancelled.")
+    process.exit(0)
+  }
+
+  if (!addIgnores) return [...existingIgnores]
+
+  const typed = await p.text({
+    message:
+      "Enter ignore patterns (comma-separated, glob-style: dir/cache, **/*.tmp)",
+    initialValue: existingIgnores.join(", "),
+    placeholder: ".gossip/cache, **/*.log, node_modules",
+  })
+  if (p.isCancel(typed)) {
+    p.cancel("Cancelled.")
+    process.exit(0)
+  }
+  return (typed as string)
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean)
 }
 
 async function promptLocalConfig(local: LocalConfig | null): Promise<void> {
@@ -60,6 +91,7 @@ async function promptLocalConfig(local: LocalConfig | null): Promise<void> {
   }
 
   const paths = selectPaths as string[]
+  const ignores = await promptIgnores(local)
 
   const newLocal: LocalConfig = {
     project: projectName as string,
@@ -67,6 +99,7 @@ async function promptLocalConfig(local: LocalConfig | null): Promise<void> {
       retention: local?.backup.retention ?? 5,
       paths:
         paths.length > 0 ? paths : (local?.backup.paths ?? [...DEFAULT_PATHS]),
+      ignores,
     },
   }
   await writeLocalConfig(newLocal)
@@ -85,11 +118,50 @@ export async function cmdInit(): Promise<void> {
   const hasCreds =
     global.r2.accountId && global.r2.accessKeyId && global.r2.secretAccessKey
 
+  // Smart .env detection
+  if (!hasCreds) {
+    const envCreds = await detectEnvCredentials()
+    if (envCreds) {
+      p.note(
+        `Found R2 credentials in .env:\n` +
+          `  Account ID:     ${envCreds.accountId.slice(0, 4)}...\n` +
+          `  Access Key ID:  ${envCreds.accessKeyId.slice(0, 4)}...\n` +
+          `  Bucket:         ${envCreds.bucket}`,
+        ".env Detection",
+      )
+
+      const useEnv = await p.confirm({
+        message:
+          "Import these credentials into ~/.r2gitrc? (The .env will not be read again by r2git)",
+        initialValue: true,
+      })
+      if (p.isCancel(useEnv)) {
+        p.cancel("Cancelled.")
+        process.exit(0)
+      }
+
+      if (useEnv) {
+        global.r2 = {
+          accountId: envCreds.accountId,
+          accessKeyId: envCreds.accessKeyId,
+          secretAccessKey: envCreds.secretAccessKey,
+          bucket: envCreds.bucket,
+        }
+        await writeGlobalConfig(global)
+        p.note(
+          "Credentials saved to ~/.r2gitrc. r2git will no longer read .env for credentials.",
+          "Import Complete",
+        )
+      }
+    }
+  }
+
   const configureR2 =
-    !hasCreds ||
+    !hasCreds &&
+    !global.r2.accountId &&
     (await p.confirm({
       message:
-        "Do you want to reconfigure global Cloudflare R2 / Doppler credentials?",
+        "Do you want to configure global Cloudflare R2 / Doppler credentials manually?",
       initialValue: false,
     }))
 

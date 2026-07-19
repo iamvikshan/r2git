@@ -2,7 +2,8 @@
 ./.husky/identity-guard.sh
 
 # 2. Run project-specific checks
+export PATH="$HOME/.bun/bin:$PATH"
 echo "Running pre-commit checks..."
-bunx lint-staged || exit 1
+bun x lint-staged || exit 1
 bun check || exit 1
 echo "Pre-commit checks passed successfully."

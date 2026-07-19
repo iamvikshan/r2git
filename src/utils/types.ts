@@ -9,6 +9,7 @@ export type BackupConfig = {
   prefix?: string
   retention: number
   paths: string[]
+  ignores: string[]
 }
 
 export type ProjectConfig = {

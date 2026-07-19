@@ -80,7 +80,7 @@ export async function cmdDiff(): Promise<void> {
   const { manifest: localManifest } = await buildManifest(
     validPaths,
     cfg.project,
-    null,
+    cfg.backup.ignores,
   )
   s.stop(`Hashed ${Object.keys(localManifest.entries).length} local file(s)`)
 

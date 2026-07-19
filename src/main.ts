@@ -22,6 +22,7 @@ CORE COMMANDS
   init                      Initialize a local .r2gitconfig configuration
   status                    Show the status of tracked files and remote backups
   add [paths...]            Add files/directories to the tracked list
+  add --ignore <pattern>    Add ignore patterns for tracked directories
   rm [paths...]             Remove files/directories from the tracked list (aliases: remove)
   push                      Upload local tracked files to remote R2 backup
   pull                      Download and restore tracked files from R2 backup

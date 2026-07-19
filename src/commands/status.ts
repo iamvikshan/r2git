@@ -74,7 +74,7 @@ async function printLocalStatus(cfg: ResolvedConfig): Promise<{
       const { manifest, errors } = await buildManifest(
         validPaths,
         cfg.project,
-        null,
+        cfg.backup.ignores,
       )
       if (errors.length === 0) {
         localManifest = manifest
