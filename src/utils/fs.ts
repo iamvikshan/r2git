@@ -128,11 +128,9 @@ export function resolvePaths(
  */
 export async function checkPathExists(absolutePath: string): Promise<boolean> {
   try {
-    // Check if it's a file first
     if (await Bun.file(absolutePath).exists()) {
       return true
     }
-    // Check if it's a directory
     return isDirectory(absolutePath)
   } catch {
     return false

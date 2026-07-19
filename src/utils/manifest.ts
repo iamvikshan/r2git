@@ -129,7 +129,7 @@ function expandDirectory(
       }
       const relPath = entry.slice(dirPath.length).replace(/^\//, "")
       const originalPath = `${originalPrefix}/${relPath}`
-      if (!isIgnored(originalPath)) {
+      if (!pathOrAncestorIgnored(originalPath, isIgnored)) {
         expanded.push({ original: originalPath, absolute: entry })
       }
     }
@@ -141,6 +141,17 @@ function expandDirectory(
   }
 
   return { expanded, errors }
+}
+
+function pathOrAncestorIgnored(
+  path: string,
+  isIgnored: (path: string) => boolean,
+): boolean {
+  const segments = path.split("/")
+  for (let index = segments.length; index > 0; index--) {
+    if (isIgnored(segments.slice(0, index).join("/"))) return true
+  }
+  return false
 }
 
 /**
@@ -167,20 +178,19 @@ export async function buildManifest(
   for (const p of paths) {
     const symlink = isSymlink(p.absolute)
     if (symlink) {
-      if (!isIgnored(p.original)) expandedPaths.push(p)
+      if (!pathOrAncestorIgnored(p.original, isIgnored)) expandedPaths.push(p)
       continue
     }
 
     if (isDirectory(p.absolute)) {
-      // Skip the entire directory if it's ignored
-      if (isIgnored(p.original)) {
+      if (pathOrAncestorIgnored(p.original, isIgnored)) {
         continue
       }
       const result = expandDirectory(p.absolute, p.original, isIgnored)
       expandedPaths.push(...result.expanded)
       errors.push(...result.errors)
     } else {
-      if (!isIgnored(p.original)) expandedPaths.push(p)
+      if (!pathOrAncestorIgnored(p.original, isIgnored)) expandedPaths.push(p)
     }
   }
 

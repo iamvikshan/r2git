@@ -93,7 +93,7 @@ async function restoreFromArchive(
     const absolutePath = resolvePath(path, ctx)
 
     try {
-      const status = await restoreSingleFile(absolutePath, entry, tmpDir)
+      const status = await restoreSingleFile(path, absolutePath, entry, tmpDir)
       if (status === "restored") result.restoredFiles++
       else if (status === "cached") result.cachedFiles++
       else result.errors.push({ path, reason: "not found in archive" })

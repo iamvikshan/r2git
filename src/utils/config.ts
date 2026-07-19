@@ -1,4 +1,5 @@
 import { homeDir, resolvePaths, type PathContext } from "./fs"
+import { parseEnv } from "node:util"
 import type {
   BackupConfig,
   GlobalConfig,
@@ -33,26 +34,6 @@ export function defaultProject(_name: string): ProjectConfig {
   }
 }
 
-function parseEnvFile(text: string): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith("#")) continue
-    const idx = trimmed.indexOf("=")
-    if (idx !== -1) {
-      const k = trimmed.slice(0, idx).trim()
-      const v = trimmed.slice(idx + 1).trim()
-      const val =
-        (v.startsWith('"') && v.endsWith('"')) ||
-        (v.startsWith("'") && v.endsWith("'"))
-          ? v.slice(1, -1)
-          : v
-      env[k] = val
-    }
-  }
-  return env
-}
-
 /**
  * Detect R2 credentials in a .env file.
  * Returns the found credentials or null if none found.
@@ -61,12 +42,12 @@ export async function detectEnvCredentials(): Promise<{
   accountId: string
   accessKeyId: string
   secretAccessKey: string
-  bucket: string
+  bucket?: string
 } | null> {
   const file = Bun.file(`${process.cwd()}/.env`)
   if (!(await file.exists())) return null
 
-  const env = parseEnvFile(await file.text())
+  const env = parseEnv(await file.text())
 
   const accountId = env.R2_ACCOUNT_ID ?? env.CLOUDFLARE_ACCOUNT_ID
   const accessKeyId = env.R2_ACCESS_KEY_ID ?? env.CLOUDFLARE_ACCESS_KEY_ID
@@ -76,7 +57,12 @@ export async function detectEnvCredentials(): Promise<{
 
   if (!accountId || !accessKeyId || !secretAccessKey) return null
 
-  return { accountId, accessKeyId, secretAccessKey, bucket: bucket ?? "r2git" }
+  return {
+    accountId,
+    accessKeyId,
+    secretAccessKey,
+    ...(bucket !== undefined && { bucket }),
+  }
 }
 
 export function defaultConfig(): GlobalConfig {
@@ -129,16 +115,42 @@ export async function migrateLegacyConfig(): Promise<void> {
   await tryMigrateFile(legacyMigrate, newPath)
 }
 
-type RawGlobalConfig = {
-  activeProject?: unknown
-  projects?: unknown
-  dopplerToken?: unknown
-  r2?: {
-    accountId?: unknown
-    accessKeyId?: unknown
-    secretAccessKey?: unknown
-    bucket?: unknown
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function normalizeBackupConfig(value: unknown): BackupConfig {
+  if (!isRecord(value)) {
+    return { retention: 5, paths: [...DEFAULT_PATHS], ignores: [] }
   }
+
+  const backup: BackupConfig = {
+    retention: typeof value.retention === "number" ? value.retention : 5,
+    paths: Array.isArray(value.paths)
+      ? value.paths.filter((path): path is string => typeof path === "string")
+      : [...DEFAULT_PATHS],
+    ignores: Array.isArray(value.ignores)
+      ? value.ignores.filter(
+          (pattern): pattern is string => typeof pattern === "string",
+        )
+      : [],
+  }
+  if (typeof value.prefix === "string") backup.prefix = value.prefix
+  return backup
+}
+
+function normalizeProjects(value: unknown): Record<string, ProjectConfig> {
+  if (!isRecord(value)) return {}
+
+  const projects: Record<string, ProjectConfig> = {}
+  for (const [name, project] of Object.entries(value)) {
+    projects[name] = {
+      backup: normalizeBackupConfig(
+        isRecord(project) ? project.backup : undefined,
+      ),
+    }
+  }
+  return projects
 }
 
 export async function loadGlobalConfig(): Promise<GlobalConfig> {
@@ -148,32 +160,30 @@ export async function loadGlobalConfig(): Promise<GlobalConfig> {
   if (!exists) return defaultConfig()
 
   try {
-    const raw = JSON.parse(await file.text()) as RawGlobalConfig
+    const raw: unknown = JSON.parse(await file.text())
+    if (!isRecord(raw)) return defaultConfig()
     const def = defaultConfig()
-    const rawProjects = raw.projects as
-      | Record<string, ProjectConfig>
-      | undefined
+    const rawR2 = isRecord(raw.r2) ? raw.r2 : {}
     return {
       activeProject:
         typeof raw.activeProject === "string"
           ? raw.activeProject
           : def.activeProject,
-      projects: rawProjects ?? {},
+      projects: normalizeProjects(raw.projects),
       r2: {
         accountId:
-          typeof raw.r2?.accountId === "string"
-            ? raw.r2.accountId
+          typeof rawR2.accountId === "string"
+            ? rawR2.accountId
             : def.r2.accountId,
         accessKeyId:
-          typeof raw.r2?.accessKeyId === "string"
-            ? raw.r2.accessKeyId
+          typeof rawR2.accessKeyId === "string"
+            ? rawR2.accessKeyId
             : def.r2.accessKeyId,
         secretAccessKey:
-          typeof raw.r2?.secretAccessKey === "string"
-            ? raw.r2.secretAccessKey
+          typeof rawR2.secretAccessKey === "string"
+            ? rawR2.secretAccessKey
             : def.r2.secretAccessKey,
-        bucket:
-          typeof raw.r2?.bucket === "string" ? raw.r2.bucket : def.r2.bucket,
+        bucket: typeof rawR2.bucket === "string" ? rawR2.bucket : def.r2.bucket,
       },
       dopplerToken:
         typeof raw.dopplerToken === "string"
@@ -187,11 +197,7 @@ export async function loadGlobalConfig(): Promise<GlobalConfig> {
 
 type RawLocalConfig = {
   project?: unknown
-  backup?: {
-    prefix?: unknown
-    retention?: unknown
-    paths?: unknown
-  }
+  backup?: unknown
 }
 
 export async function loadLocalConfig(): Promise<LocalConfig | null> {
@@ -199,26 +205,13 @@ export async function loadLocalConfig(): Promise<LocalConfig | null> {
   if (!(await file.exists())) return null
 
   try {
-    const raw = JSON.parse(await file.text()) as RawLocalConfig
+    const parsed: unknown = JSON.parse(await file.text())
+    if (!isRecord(parsed)) return null
+    const raw: RawLocalConfig = parsed
     if (typeof raw.project !== "string" || !raw.project) return null
-    const backup = raw.backup ?? {}
-    const resBackup: BackupConfig = {
-      retention: typeof backup.retention === "number" ? backup.retention : 5,
-      paths: Array.isArray(backup.paths)
-        ? (backup.paths as string[])
-        : [...DEFAULT_PATHS],
-      ignores: Array.isArray((backup as { ignores?: unknown }).ignores)
-        ? (backup as { ignores: unknown[] }).ignores.filter(
-            (i): i is string => typeof i === "string",
-          )
-        : [],
-    }
-    if (typeof backup.prefix === "string") {
-      resBackup.prefix = backup.prefix
-    }
     return {
       project: raw.project,
-      backup: resBackup,
+      backup: normalizeBackupConfig(raw.backup),
     }
   } catch {
     return null
@@ -267,18 +260,10 @@ export async function resolveActiveProjectConfig(
   const project = global.activeProject ?? autoName
   const projectCfg = global.projects[project] ?? defaultProject(project)
 
-  // Normalize backup config — ensure ignores is always an array
-  const backup = {
-    ...projectCfg.backup,
-    ignores: Array.isArray(projectCfg.backup.ignores)
-      ? projectCfg.backup.ignores
-      : [],
-  }
-
   return {
     project,
     r2,
-    backup,
+    backup: projectCfg.backup,
     isLocal: false,
   }
 }

@@ -58,6 +58,7 @@ npm install -g @syncron/r2git
 | **`r2git diff`**                          | Compare local file hashes against latest remote backup.                           |
 | **`r2git log`**                           | Show history of remote backups (manifests) with entry counts.                     |
 | **`r2git clone <org/repo>`**              | Pull down the latest backup and initialize a new project workspace.               |
+| **`r2git cleanup`**                       | Find orphaned archives; use `--yes` to delete eligible objects.                   |
 | **`r2git auth <login\|status\|doppler>`** | Authenticate credentials.                                                         |
 | **`r2git project <list\|switch>`**        | Manage multiple projects.                                                         |
 
@@ -192,6 +193,12 @@ commit.**
 ### Log
 
 - `-v, --verbose`: Show entry counts and parent info per manifest
+- `--prefix <p>`: Override backup prefix
+
+### Cleanup
+
+- Dry-run by default; pass `--yes` to delete eligible orphaned archives
+- `--min-age <hours>`: Minimum orphan age before deletion (default: 24)
 - `--prefix <p>`: Override backup prefix
 
 ---

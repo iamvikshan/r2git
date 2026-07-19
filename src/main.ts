@@ -9,6 +9,7 @@ import { cmdClone } from "./commands/clone"
 import { cmdAuth } from "./commands/auth"
 import { cmdProject } from "./commands/project"
 import { cmdDiff } from "./commands/diff"
+import { cmdCleanup } from "./commands/cleanup"
 import { setLogLevel } from "./utils/log"
 
 function help(status: number): never {
@@ -28,6 +29,7 @@ CORE COMMANDS
   pull                      Download and restore tracked files from R2 backup
   log                       Show history of remote R2 backups
   clone [project-name]      Clone and restore a project's backups from R2
+  cleanup                   Find orphaned archives (dry-run by default)
 
 ADDITIONAL COMMANDS
   auth <login|status|doppler> Manage credentials (supports manual R2 keys, Doppler CLI oauth, or Doppler web tokens)
@@ -39,13 +41,14 @@ GLOBAL FLAGS
   -v, --verbose             Enable verbose/debug logging
   -q, --quiet               Suppress non-essential output
 
-PUSH/PULL FLAGS
-  -y, --yes                 Skip confirmations
+PUSH/PULL/CLEANUP FLAGS
+  -y, --yes                 Skip confirmations; delete eligible cleanup objects
   -n, --dry-run             Print actions without executing
   -i, --interactive         Pick backup to pull interactively
   --keep <N>                Number of backups to keep (push only)
   --prefix <p>              Override backup prefix (push/log only)
   --backup <key>            Specific backup key to pull (pull only)
+  --min-age <hours>         Minimum orphan age (cleanup only, default: 24)
 `)
   process.exit(status)
 }
@@ -108,6 +111,9 @@ const commandRegistry: Record<string, CommandRunner> = {
   },
   compare: async () => {
     await cmdDiff()
+  },
+  cleanup: async args => {
+    await cmdCleanup(args)
   },
 }
 

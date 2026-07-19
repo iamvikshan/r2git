@@ -8,14 +8,32 @@ import { resolvePath, buildPathContext, isPathUnderBase } from "../utils/fs"
 import { info } from "../utils/log"
 import type { LocalConfig } from "../utils/types"
 
+function splitIgnorePatterns(input: string): string[] {
+  const patterns: string[] = []
+  let braceDepth = 0
+  let current = ""
+
+  for (const character of input) {
+    if (character === "{") braceDepth++
+    if (character === "}") braceDepth = Math.max(0, braceDepth - 1)
+
+    if (character === "," && braceDepth === 0) {
+      if (current.trim()) patterns.push(current.trim())
+      current = ""
+      continue
+    }
+    current += character
+  }
+
+  if (current.trim()) patterns.push(current.trim())
+  return patterns
+}
+
 async function handleIgnoreFlag(
   local: LocalConfig,
   args: string[],
 ): Promise<void> {
-  const patterns = args
-    .slice(1)
-    .flatMap(arg => arg.split(",").map(s => s.trim()))
-    .filter(Boolean)
+  const patterns = args.slice(1).flatMap(splitIgnorePatterns)
   if (patterns.length === 0) {
     const typed = await p.text({
       message: "Enter ignore pattern(s) to add (comma-separated)",
@@ -29,12 +47,7 @@ async function handleIgnoreFlag(
       p.cancel("Cancelled.")
       process.exit(0)
     }
-    patterns.push(
-      ...(typed as string)
-        .split(",")
-        .map(s => s.trim())
-        .filter(Boolean),
-    )
+    patterns.push(...splitIgnorePatterns(typed))
   }
 
   const currentIgnores = new Set(local.backup.ignores)

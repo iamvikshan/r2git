@@ -1,137 +1,80 @@
-import { Glob } from "bun"
-import type { ManifestEntry, ObjectType } from "./store-types"
 import {
+  chmodSync,
+  copyFileSync,
   lstatSync,
-  writeFileSync,
   mkdirSync,
   mkdtempSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
 } from "node:fs"
-import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { dirname, join } from "node:path"
 
-/**
- * Create a tar.gz archive from a list of absolute paths.
- * Returns the archive buffer and a map of relative path → entry metadata.
- * Note: Hash field in entries is set to empty string; caller should preserve hashes from buildManifest.
- */
+export function archiveEntryPath(originalPath: string): string {
+  return join("entries", Buffer.from(originalPath).toString("base64url"))
+}
+
 export function createArchive(
   paths: Array<{ original: string; absolute: string }>,
 ): {
   archive: Uint8Array
-  entries: Record<string, ManifestEntry>
   errors: Array<{ path: string; reason: string }>
 } {
-  const entries: Record<string, ManifestEntry> = {}
   const errors: Array<{ path: string; reason: string }> = []
-  const validPaths: string[] = []
-
-  // Validate and collect metadata for each path
-  for (const p of paths) {
-    try {
-      const stat = lstatSync(p.absolute)
-      const mode = (stat.mode & 0o7777).toString(8).padStart(4, "0")
-      const mtime = new Date(stat.mtimeMs).toISOString()
-
-      if (stat.isSymbolicLink()) {
-        // Symlinks get stored as-is in the tar
-        entries[p.original] = {
-          hash: "",
-          mode,
-          size: 0,
-          mtime,
-          type: "symlink-tar" as ObjectType,
-        }
-        validPaths.push(p.absolute)
-      } else if (stat.isDirectory()) {
-        // Expand directory
-        const glob = new Glob("**/*")
-        for (const entry of glob.scanSync({
-          cwd: p.absolute,
-          absolute: true,
-          onlyFiles: false,
-          dot: true,
-        })) {
-          try {
-            const entryStat = lstatSync(entry)
-            if (entryStat.isDirectory()) continue
-            const relPath = entry.slice(p.absolute.length).replace(/^\//, "")
-            const originalPath = `${p.original}/${relPath}`
-            const entryMode = (entryStat.mode & 0o7777)
-              .toString(8)
-              .padStart(4, "0")
-            const entryMtime = new Date(entryStat.mtimeMs).toISOString()
-            entries[originalPath] = {
-              hash: "", // Caller should preserve hash from buildManifest
-              mode: entryMode,
-              size: entryStat.size,
-              mtime: entryMtime,
-              type: "file",
-            }
-            validPaths.push(entry)
-          } catch (e) {
-            errors.push({
-              path: entry,
-              reason: e instanceof Error ? e.message : String(e),
-            })
-          }
-        }
-      } else {
-        entries[p.original] = {
-          hash: "", // Caller should preserve hash from buildManifest
-          mode,
-          size: stat.size,
-          mtime,
-          type: "file",
-        }
-        validPaths.push(p.absolute)
-      }
-    } catch (e) {
-      errors.push({
-        path: p.original,
-        reason: e instanceof Error ? e.message : String(e),
-      })
-    }
-  }
-
-  if (validPaths.length === 0) {
-    return { archive: new Uint8Array(0), entries, errors }
-  }
-
-  // Create tar.gz using system tar
-  // Use a private temp directory to avoid symlink races and simultaneous-push corruption
   const tmpDir = mkdtempSync(join(tmpdir(), "r2git-archive-"))
-  const tmpList = join(tmpDir, "files.txt")
-  // NUL-delimited so filenames containing newlines don't break
-  writeFileSync(tmpList, validPaths.join("\0"))
+  const stagingDir = join(tmpDir, "payload")
+  let stagedFiles = 0
 
   try {
-    const proc = Bun.spawnSync(
-      ["tar", "-czf", "-", "--null", "--files-from", tmpList],
-      { stdin: null },
-    )
+    mkdirSync(stagingDir, { recursive: true })
+
+    for (const path of paths) {
+      try {
+        const stat = lstatSync(path.absolute)
+        const stagedPath = join(stagingDir, archiveEntryPath(path.original))
+        mkdirSync(dirname(stagedPath), { recursive: true })
+
+        if (stat.isSymbolicLink()) {
+          symlinkSync(readlinkSync(path.absolute), stagedPath)
+        } else if (stat.isFile()) {
+          copyFileSync(path.absolute, stagedPath)
+          chmodSync(stagedPath, stat.mode & 0o7777)
+        } else {
+          errors.push({ path: path.original, reason: "Unsupported file type" })
+          continue
+        }
+        stagedFiles++
+      } catch (e) {
+        errors.push({
+          path: path.original,
+          reason: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+
+    if (stagedFiles === 0) {
+      return { archive: new Uint8Array(0), errors }
+    }
+
+    const proc = Bun.spawnSync(["tar", "-czf", "-", "-C", stagingDir, "."], {
+      stdin: null,
+    })
     if (!proc.success) {
       throw new Error(`tar failed: ${proc.stderr.toString()}`)
     }
 
-    return { archive: proc.stdout, entries, errors }
+    return { archive: proc.stdout, errors }
   } finally {
     rmSync(tmpDir, { recursive: true, force: true })
   }
 }
 
-/**
- * Extract a tar.gz archive to the filesystem.
- * Returns the list of extracted paths.
- */
 export function extractArchive(
   archive: ArrayBuffer | Uint8Array,
   targetDir: string,
-): { extracted: string[]; errors: Array<{ path: string; reason: string }> } {
-  const extracted: string[] = []
+): { errors: Array<{ path: string; reason: string }> } {
   const errors: Array<{ path: string; reason: string }> = []
-
-  // Ensure target directory exists
   mkdirSync(targetDir, { recursive: true })
 
   const proc = Bun.spawnSync(["tar", "-xzf", "-", "-C", targetDir], {
@@ -141,22 +84,7 @@ export function extractArchive(
   if (!proc.success) {
     const stderr = proc.stderr.toString().trim()
     errors.push({ path: targetDir, reason: `Extraction failed: ${stderr}` })
-    return { extracted, errors }
   }
 
-  // List extracted files
-  const listProc = Bun.spawnSync(["tar", "-tzf", "-"], {
-    stdin: new Uint8Array(archive),
-  })
-  if (listProc.success) {
-    const listing = listProc.stdout.toString().trim()
-    for (const line of listing.split("\n")) {
-      const trimmed = line.trim()
-      if (trimmed && !trimmed.endsWith("/")) {
-        extracted.push(trimmed)
-      }
-    }
-  }
-
-  return { extracted, errors }
+  return { errors }
 }

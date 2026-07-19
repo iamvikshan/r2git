@@ -111,6 +111,13 @@ async function promptLocalConfig(local: LocalConfig | null): Promise<void> {
   handleGitSetup()
 }
 
+function importedBucket(
+  envBucket: string | undefined,
+  configuredBucket: string | undefined,
+): string {
+  return envBucket ?? configuredBucket ?? "r2git"
+}
+
 export async function cmdInit(): Promise<void> {
   p.intro("r2git init")
 
@@ -129,7 +136,7 @@ export async function cmdInit(): Promise<void> {
         `Found R2 credentials in .env:\n` +
           `  Account ID:     ${envCreds.accountId.slice(0, 4)}...\n` +
           `  Access Key ID:  ${envCreds.accessKeyId.slice(0, 4)}...\n` +
-          `  Bucket:         ${envCreds.bucket}`,
+          `  Bucket:         ${importedBucket(envCreds.bucket, global.r2.bucket)}`,
         ".env Detection",
       )
 
@@ -148,7 +155,7 @@ export async function cmdInit(): Promise<void> {
           accountId: envCreds.accountId,
           accessKeyId: envCreds.accessKeyId,
           secretAccessKey: envCreds.secretAccessKey,
-          bucket: envCreds.bucket,
+          bucket: importedBucket(envCreds.bucket, global.r2.bucket),
         }
         await writeGlobalConfig(global)
         p.note(

@@ -1,12 +1,14 @@
 import {
-  existsSync,
   chmodSync,
   mkdirSync,
   copyFileSync,
+  lstatSync,
   readlinkSync,
   symlinkSync,
   unlinkSync,
 } from "node:fs"
+import { join } from "node:path"
+import { archiveEntryPath } from "./archive"
 import { checkPathExists } from "./fs"
 import { hashFile } from "./hash"
 import { warn } from "./log"
@@ -20,33 +22,35 @@ export type RestoreStatus = "restored" | "cached" | "error"
  * For regular files, checks hash before copying.
  */
 export async function restoreSingleFile(
+  originalPath: string,
   absolutePath: string,
   entry: ManifestEntry,
   tmpDir: string,
 ): Promise<RestoreStatus> {
-  // Find the file in the extracted archive
-  const extractedPath = `${tmpDir}${absolutePath}`
-  let sourcePath: string | null = null
-
-  if (existsSync(extractedPath)) {
-    sourcePath = extractedPath
-  } else {
-    const stripped = absolutePath.startsWith("/")
-      ? absolutePath.slice(1)
-      : absolutePath
-    const altPath = `${tmpDir}/${stripped}`
-    if (existsSync(altPath)) {
-      sourcePath = altPath
+  const stripped = absolutePath.startsWith("/")
+    ? absolutePath.slice(1)
+    : absolutePath
+  const candidates = [
+    join(tmpDir, archiveEntryPath(originalPath)),
+    `${tmpDir}${absolutePath}`,
+    join(tmpDir, stripped),
+  ]
+  let sourcePath: string | undefined
+  for (const candidate of candidates) {
+    try {
+      lstatSync(candidate)
+      sourcePath = candidate
+      break
+    } catch {
+      continue
     }
   }
 
   if (!sourcePath) return "error"
 
-  // Symlink restoration
   if (entry.type === "symlink-tar") {
     try {
       const linkTarget = readlinkSync(sourcePath)
-      // Remove existing file/link at destination
       try {
         unlinkSync(absolutePath)
       } catch {}
@@ -63,7 +67,6 @@ export async function restoreSingleFile(
     }
   }
 
-  // Regular file — check if local already matches
   const exists = await checkPathExists(absolutePath)
   if (exists) {
     try {
@@ -74,12 +77,9 @@ export async function restoreSingleFile(
         } catch {}
         return "cached"
       }
-    } catch {
-      // Can't hash — proceed with restore
-    }
+    } catch {}
   }
 
-  // Copy to final location
   const dir = absolutePath.substring(0, absolutePath.lastIndexOf("/"))
   mkdirSync(dir, { recursive: true })
   copyFileSync(sourcePath, absolutePath)

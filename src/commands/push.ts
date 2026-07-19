@@ -130,19 +130,7 @@ async function createAndUploadArchive(
 ): Promise<boolean> {
   const ctx = buildPathContext(cfg.project)
 
-  // Build list of paths to archive from the manifest (ignores already applied)
-  const pathsToArchive: Array<{
-    original: string
-    absolute: string
-    relative: string
-  }> = []
-  for (const originalPath of Object.keys(manifest.entries)) {
-    const absolute = resolvePaths([originalPath], ctx)[0]?.absolute
-    if (absolute) {
-      const relative = absolute.startsWith("/") ? absolute.slice(1) : absolute
-      pathsToArchive.push({ original: originalPath, absolute, relative })
-    }
-  }
+  const pathsToArchive = resolvePaths(Object.keys(manifest.entries), ctx)
 
   const s = p.spinner()
   s.start("Creating archive...")
@@ -163,6 +151,10 @@ async function createAndUploadArchive(
   if (archive.length === 0) {
     s.stop("Archive creation failed — no files to archive")
     logError("No files could be archived", "push")
+    result.errors.push({
+      path: "archive",
+      reason: "No files could be archived",
+    })
     return false
   }
   s.stop(`Archive created (${formatSize(archive.length)})`)

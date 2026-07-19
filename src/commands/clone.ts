@@ -72,7 +72,7 @@ async function restoreFromManifest(
   for (const [path, entry] of entries) {
     try {
       const absolutePath = resolvePath(path, ctx)
-      const status = await restoreSingleFile(absolutePath, entry, tmpDir)
+      const status = await restoreSingleFile(path, absolutePath, entry, tmpDir)
       if (status === "restored") restored++
       else if (status === "cached") cached++
       else errors++
@@ -155,10 +155,13 @@ async function lookupLatestBackup(
   }
 
   if (!latest) {
-    s.stop("No backups found.")
     if (lookupError) {
-      logError(`Failed to query backups: ${lookupError}`, "clone")
+      s.stop("Failed to query backups.")
+      logError(lookupError, "clone")
+      p.cancel(`Backup query failed: ${lookupError}`)
+      process.exit(1)
     }
+    s.stop("No backups found.")
     p.cancel(
       `No backups found on R2 for project '${name}' under prefix '${r2Prefix}'.`,
     )
