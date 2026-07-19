@@ -4,6 +4,8 @@ import {
   writeLocalConfig,
   LOCAL_CONFIG_FILENAME,
 } from "../utils/config"
+import { resolvePath, buildPathContext, isPathUnderBase } from "../utils/fs"
+import { info, warn } from "../utils/log"
 
 export async function cmdRm(args: string[]): Promise<void> {
   const local = await loadLocalConfig()
@@ -38,31 +40,38 @@ export async function cmdRm(args: string[]): Promise<void> {
     pathsToRemove = selectPaths as string[]
   }
 
+  const ctx = buildPathContext(local.project)
   const currentPaths = new Set(local.backup.paths)
   let removedCount = 0
 
   for (const path of pathsToRemove) {
     let found = false
-    const matchers = [
-      path,
-      `{cwd}/${path}`,
-      path.startsWith(process.cwd())
-        ? `{cwd}/${path.slice(process.cwd().length).replace(/^\//, "")}`
-        : "",
-    ]
+    // Try multiple matching strategies
+    const matchers = [path, `{cwd}/${path}`, `{home}/${path}`]
+
+    // Also try resolving the input to see if it matches any stored path
+    const absPath = resolvePath(path, ctx)
+    if (isPathUnderBase(absPath, ctx.cwd)) {
+      matchers.push(`{cwd}/${absPath.slice(ctx.cwd.length).replace(/^\//, "")}`)
+    }
+    if (isPathUnderBase(absPath, ctx.home)) {
+      matchers.push(
+        `{home}/${absPath.slice(ctx.home.length).replace(/^\//, "")}`,
+      )
+    }
 
     for (const m of matchers) {
       if (m && currentPaths.has(m)) {
         local.backup.paths = local.backup.paths.filter(p => p !== m)
         currentPaths.delete(m)
         removedCount++
-        console.log(`  \x1b[31m- Untrack path:\x1b[0m ${m}`)
+        info(`Untracked path: ${m}`, "rm")
         found = true
         break
       }
     }
     if (!found) {
-      console.log(`  \x1b[33mℹ Path not found in tracked list:\x1b[0m ${path}`)
+      warn(`Path not found in tracked list: ${path}`, "rm")
     }
   }
 

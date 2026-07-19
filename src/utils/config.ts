@@ -1,4 +1,4 @@
-import { homeDir } from "./fs"
+import { homeDir, resolvePaths, type PathContext } from "./fs"
 import type {
   BackupConfig,
   GlobalConfig,
@@ -271,17 +271,15 @@ export function projectR2Prefix(
   return project.endsWith("/") ? project : `${project}/`
 }
 
+/**
+ * @deprecated Use resolvePaths from fs.ts instead.
+ * Kept for backward compatibility — delegates to the unified resolver.
+ */
 export function resolveTarPaths(
   paths: string[],
   cwd: string,
   home: string,
 ): string[] {
-  return paths.map(p => {
-    let resolved = p
-    if (resolved.startsWith("~")) {
-      resolved = resolved.replace("~", home)
-    }
-    resolved = resolved.replace("{cwd}", cwd)
-    return resolved.startsWith("/") ? resolved.slice(1) : resolved
-  })
+  const ctx: PathContext = { cwd, home }
+  return resolvePaths(paths, ctx).map(r => r.relative)
 }

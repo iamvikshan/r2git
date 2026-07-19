@@ -65,6 +65,25 @@ export async function deleteObject(cfg: R2Config, key: string): Promise<void> {
   }
 }
 
+export async function headObject(cfg: R2Config, key: string): Promise<boolean> {
+  const client = createClient(cfg)
+  const url = objectUrl(cfg, key)
+  const res = await client.fetch(url, { method: "HEAD" })
+
+  // 404 means object doesn't exist (expected case)
+  if (res.status === 404) {
+    return false
+  }
+
+  // 200-299 means object exists
+  if (res.ok) {
+    return true
+  }
+
+  // Other errors (403, 500, etc.) should be propagated
+  throw new Error(`R2 HEAD request failed [${res.status}]: ${res.statusText}`)
+}
+
 function parseContents(xml: string): AssetMeta[] {
   const results: AssetMeta[] = []
   for (const block of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {

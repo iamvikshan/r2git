@@ -4,7 +4,8 @@ import {
   writeLocalConfig,
   LOCAL_CONFIG_FILENAME,
 } from "../utils/config"
-import { getAbsolutePath } from "../utils/fs"
+import { resolvePath, buildPathContext, isPathUnderBase } from "../utils/fs"
+import { info } from "../utils/log"
 
 export async function cmdAdd(args: string[]): Promise<void> {
   const local = await loadLocalConfig()
@@ -21,7 +22,7 @@ export async function cmdAdd(args: string[]): Promise<void> {
   if (pathsToAdd.length === 0) {
     const typed = await p.text({
       message: "Enter path(s) to add (comma-separated)",
-      placeholder: ".env, secrets.json",
+      placeholder: ".env, secrets.json, {home}/.config/app/config.json",
       validate(val) {
         if (!val?.trim()) return "Path is required"
         return undefined
@@ -37,24 +38,32 @@ export async function cmdAdd(args: string[]): Promise<void> {
       .filter(Boolean)
   }
 
+  const ctx = buildPathContext(local.project)
+
   const currentPaths = new Set(local.backup.paths)
   let addedCount = 0
 
   for (const path of pathsToAdd) {
+    // Try to canonicalize: if the resolved path is under cwd, store as {cwd}/...
+    const absPath = resolvePath(path, ctx)
     let resolved = path
-    const absPath = getAbsolutePath(path)
-    if (absPath.startsWith(process.cwd())) {
-      const rel = absPath.slice(process.cwd().length).replace(/^\//, "")
+
+    if (isPathUnderBase(absPath, ctx.cwd)) {
+      const rel = absPath.slice(ctx.cwd.length).replace(/^\//, "")
       resolved = `{cwd}/${rel}`
+    } else if (isPathUnderBase(absPath, ctx.home)) {
+      const rel = absPath.slice(ctx.home.length).replace(/^\//, "")
+      resolved = `{home}/${rel}`
     }
+    // else: keep as-is (absolute path or variable form the user typed)
 
     if (!currentPaths.has(resolved)) {
       local.backup.paths.push(resolved)
       currentPaths.add(resolved)
       addedCount++
-      console.log(`  \x1b[32m+ Stage tracked path:\x1b[0m ${resolved}`)
+      info(`Staged tracked path: ${resolved}`, "add")
     } else {
-      console.log(`  \x1b[33mℹ Path already tracked:\x1b[0m ${resolved}`)
+      info(`Path already tracked: ${resolved}`, "add")
     }
   }
 
