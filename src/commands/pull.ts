@@ -1,4 +1,6 @@
-import { rmSync } from "node:fs"
+import { rmSync, mkdtempSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import * as p from "@clack/prompts"
 import { resolveActiveProjectConfig, projectR2Prefix } from "../utils/config"
 import { getCurrentDirBasename } from "../utils/git"
@@ -66,7 +68,7 @@ async function restoreFromArchive(
     process.exit(1)
   }
 
-  const tmpDir = `/tmp/r2git-restore-${Date.now()}`
+  const tmpDir = mkdtempSync(join(tmpdir(), "r2git-restore-"))
   const s2 = p.spinner()
   s2.start("Extracting archive...")
 

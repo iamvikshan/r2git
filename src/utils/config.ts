@@ -33,16 +33,6 @@ export function defaultProject(_name: string): ProjectConfig {
   }
 }
 
-export async function loadWorkspaceEnv(): Promise<void> {
-  const file = Bun.file(`${process.cwd()}/.env`)
-  if (await file.exists()) {
-    const env = parseEnvFile(await file.text())
-    for (const [k, v] of Object.entries(env)) {
-      process.env[k] = v
-    }
-  }
-}
-
 function parseEnvFile(text: string): Record<string, string> {
   const env: Record<string, string> = {}
   for (const line of text.split("\n")) {

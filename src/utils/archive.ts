@@ -1,11 +1,11 @@
 import { Glob } from "bun"
-import { hashBuffer } from "./hash"
 import type { ManifestEntry, ObjectType } from "./store-types"
 import { lstatSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs"
 
 /**
  * Create a tar.gz archive from a list of absolute paths.
  * Returns the archive buffer and a map of relative path → entry metadata.
+ * Note: Hash field in entries is set to empty string; caller should preserve hashes from buildManifest.
  */
 export function createArchive(
   paths: Array<{ original: string; absolute: string; relative: string }>,
@@ -28,7 +28,7 @@ export function createArchive(
       if (stat.isSymbolicLink()) {
         // Symlinks get stored as-is in the tar
         entries[p.original] = {
-          hash: "", // filled after archive creation
+          hash: "", // Caller should preserve hash from buildManifest
           mode,
           size: 0,
           mtime,
@@ -54,7 +54,7 @@ export function createArchive(
               .padStart(4, "0")
             const entryMtime = new Date(entryStat.mtimeMs).toISOString()
             entries[originalPath] = {
-              hash: "",
+              hash: "", // Caller should preserve hash from buildManifest
               mode: entryMode,
               size: entryStat.size,
               mtime: entryMtime,
@@ -70,7 +70,7 @@ export function createArchive(
         }
       } else {
         entries[p.original] = {
-          hash: "",
+          hash: "", // Caller should preserve hash from buildManifest
           mode,
           size: stat.size,
           mtime,
@@ -105,15 +105,7 @@ export function createArchive(
 
     const archive = proc.stdout
 
-    // Hash the archive for integrity
-    const archiveHash = hashBuffer(archive)
-
-    // Fill in hashes — we hash the archive itself, not individual files
-    for (const path of Object.keys(entries)) {
-      const entry = entries[path]
-      if (entry) entry.hash = archiveHash
-    }
-
+    // Archive created successfully — entries already have per-file hashes
     return { archive, entries, errors }
   } finally {
     unlinkSync(tmpList)

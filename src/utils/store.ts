@@ -164,3 +164,64 @@ function manifestKey(timestamp: string, projectPrefix: string): string {
   const suffix = Math.random().toString(36).substring(2, 8)
   return `${projectPrefix}manifests/${sanitized}-${suffix}.json`
 }
+
+/**
+ * Clean up orphaned archives that are not referenced by any manifest.
+ * This is a utility function for manual cleanup or periodic sweeps.
+ * Returns the number of orphaned archives deleted.
+ */
+export async function cleanupOrphanedArchives(
+  r2: R2Config,
+  projectPrefix: string,
+): Promise<number> {
+  try {
+    // Get all manifests
+    const manifests = await listManifests(r2, projectPrefix)
+
+    // Collect all referenced archive keys
+    const referencedArchives = new Set<string>()
+    for (const m of manifests) {
+      try {
+        const manifest = await downloadManifest(r2, m.key)
+        if (manifest.archiveKey) {
+          referencedArchives.add(manifest.archiveKey)
+        }
+      } catch (e) {
+        // Skip manifests that fail to download
+        debug(
+          `Failed to download manifest ${m.key}: ${e instanceof Error ? e.message : String(e)}`,
+          "cleanup",
+        )
+      }
+    }
+
+    // List all archives
+    const archivePrefix = `${projectPrefix}archives/`
+    const allArchives = await listObjects(r2, archivePrefix)
+
+    // Delete orphaned archives
+    let deleted = 0
+    for (const archive of allArchives) {
+      if (!referencedArchives.has(archive.key)) {
+        try {
+          await deleteObject(r2, archive.key)
+          deleted++
+          info(`Deleted orphaned archive: ${archive.key}`, "cleanup")
+        } catch (e) {
+          debug(
+            `Failed to delete archive ${archive.key}: ${e instanceof Error ? e.message : String(e)}`,
+            "cleanup",
+          )
+        }
+      }
+    }
+
+    return deleted
+  } catch (e) {
+    info(
+      `Failed to cleanup orphaned archives: ${e instanceof Error ? e.message : String(e)}`,
+      "cleanup",
+    )
+    return 0
+  }
+}

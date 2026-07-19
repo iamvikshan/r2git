@@ -129,16 +129,31 @@ async function createAndUploadArchive(
   result: PushResult,
 ): Promise<boolean> {
   const ctx = buildPathContext(cfg.project)
-  const resolved = resolvePaths(cfg.backup.paths, ctx)
+
+  // Build list of paths to archive from the manifest (ignores already applied)
+  const pathsToArchive: Array<{ original: string; absolute: string; relative: string }> = []
+  for (const originalPath of Object.keys(manifest.entries)) {
+    const absolute = resolvePaths([originalPath], ctx)[0]?.absolute
+    if (absolute) {
+      const relative = absolute.startsWith("/") ? absolute.slice(1) : absolute
+      pathsToArchive.push({ original: originalPath, absolute, relative })
+    }
+  }
 
   const s = p.spinner()
   s.start("Creating archive...")
-  const { archive, entries, errors: archiveErrors } = createArchive(resolved)
+  const { archive, entries, errors: archiveErrors } = createArchive(pathsToArchive)
 
+  // Update manifest entries with metadata from archive creation, preserving hashes
   for (const [path, entry] of Object.entries(entries)) {
     if (manifest.entries[path]) {
-      manifest.entries[path].hash = entry.hash
+      // Preserve the hash from buildManifest, update other metadata
+      if (entry.mode) manifest.entries[path].mode = entry.mode
+      if (entry.mtime) manifest.entries[path].mtime = entry.mtime
+      if (entry.type) manifest.entries[path].type = entry.type
     } else {
+      // New entry from archive (shouldn't happen if manifest is correct)
+      // Use hash from buildManifest if available, otherwise empty
       manifest.entries[path] = entry
     }
   }
@@ -241,6 +256,7 @@ async function performPush(
   if (!hasChanges(manifest, remoteManifest)) {
     info("No changes detected — nothing to upload", "push")
     await enforceManifestRetention(cfg.r2, r2Prefix, retention)
+    result.manifestKey = "up-to-date"
     return result
   }
 
@@ -349,10 +365,16 @@ export async function cmdPush(args: string[]): Promise<void> {
   }
 
   console.log("")
-  console.log(
-    `\x1b[32m✔ Push complete:\x1b[0m ${result.totalFiles} files, ` +
-      `${formatSize(result.uploadedBytes)} uploaded`,
-  )
-  console.log(`  Manifest: ${result.manifestKey}`)
+  if (result.manifestKey === "up-to-date") {
+    console.log(
+      `\x1b[32m✔ Already up-to-date:\x1b[0m ${result.totalFiles} files, no changes detected`,
+    )
+  } else {
+    console.log(
+      `\x1b[32m✔ Push complete:\x1b[0m ${result.totalFiles} files, ` +
+        `${formatSize(result.uploadedBytes)} uploaded`,
+    )
+    console.log(`  Manifest: ${result.manifestKey}`)
+  }
   console.log("")
 }

@@ -12,7 +12,10 @@ async function handleIgnoreFlag(
   local: LocalConfig,
   args: string[],
 ): Promise<void> {
-  const patterns = args.slice(1).filter(Boolean)
+  const patterns = args
+    .slice(1)
+    .flatMap(arg => arg.split(",").map(s => s.trim()))
+    .filter(Boolean)
   if (patterns.length === 0) {
     const typed = await p.text({
       message: "Enter ignore pattern(s) to add (comma-separated)",

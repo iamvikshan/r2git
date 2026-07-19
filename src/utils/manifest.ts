@@ -172,6 +172,10 @@ export async function buildManifest(
     }
 
     if (isDirectory(p.absolute)) {
+      // Skip the entire directory if it's ignored
+      if (isIgnored(p.original)) {
+        continue
+      }
       const result = expandDirectory(p.absolute, p.original, isIgnored)
       expandedPaths.push(...result.expanded)
       errors.push(...result.errors)

@@ -1,4 +1,6 @@
-import { rmSync } from "node:fs"
+import { rmSync, mkdtempSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
 import * as p from "@clack/prompts"
 import {
   loadGlobalConfig,
@@ -43,7 +45,7 @@ async function restoreFromManifest(
     return { restored: 0, cached: 0, errors: 1 }
   }
 
-  const tmpDir = `/tmp/r2git-clone-${Date.now()}`
+  const tmpDir = mkdtempSync(join(tmpdir(), "r2git-clone-"))
   const s2 = p.spinner()
   s2.start("Extracting archive...")
 
@@ -160,7 +162,11 @@ export async function cmdClone(projectName: string | undefined): Promise<void> {
   let latest: { manifest: Manifest; key: string } | null = null
   try {
     latest = await getLatestManifest(global.r2, r2Prefix)
-  } catch {}
+  } catch (e) {
+    s.stop("Failed to fetch manifest.")
+    logError(e instanceof Error ? e.message : String(e), "clone")
+    process.exit(1)
+  }
 
   if (!latest) {
     s.stop("No backups found.")

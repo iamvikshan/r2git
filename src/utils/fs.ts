@@ -124,11 +124,16 @@ export function resolvePaths(
 
 /**
  * Check if a path exists. Accepts absolute paths directly.
- * Uses Bun.file().exists() for optimal performance.
+ * Checks both files and directories.
  */
 export async function checkPathExists(absolutePath: string): Promise<boolean> {
   try {
-    return await Bun.file(absolutePath).exists()
+    // Check if it's a file first
+    if (await Bun.file(absolutePath).exists()) {
+      return true
+    }
+    // Check if it's a directory
+    return isDirectory(absolutePath)
   } catch {
     return false
   }
