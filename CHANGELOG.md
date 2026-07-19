@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.1.0] - 2026-07-19
+### :sparkles: New Features
+- [`2b1c983`](https://github.com/iamvikshan/r2git/commit/2b1c983bdb706a8ccab69e07d6841394283f95f2) - content-addressed object store, incremental push, cache-aware pull, diff *(PR [#1](https://github.com/iamvikshan/r2git/pull/1) by [@iamvikshan](https://github.com/iamvikshan))*
+
+
 ## [v0.0.1] - 2026-07-17
 ### :sparkles: New Features
 - [`951f706`](https://github.com/iamvikshan/r2git/commit/951f7060b8e3cc5582d32e2b7a830e494dc458d5) - Introduce core utilities for application logic *(commit by [@iamvikshan](https://github.com/iamvikshan))*
@@ -21,3 +26,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [`b61c07e`](https://github.com/iamvikshan/r2git/commit/b61c07ee7ae19aa2567ace3eb12d00f95a9ad649) - update project dependencies to latest versions and improve identity guard script *(commit by [@iamvikshan](https://github.com/iamvikshan))*
 
 [v0.0.1]: https://github.com/iamvikshan/r2git/compare/v0.0.0-0.root...v0.0.1
+[v0.1.0]: https://github.com/iamvikshan/r2git/compare/v0.0.1...v0.1.0
