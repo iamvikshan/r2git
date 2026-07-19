@@ -28,7 +28,7 @@ export function createArchive(
       if (stat.isSymbolicLink()) {
         // Symlinks get stored as-is in the tar
         entries[p.original] = {
-          hash: "", // Caller should preserve hash from buildManifest
+          hash: "",
           mode,
           size: 0,
           mtime,
@@ -105,7 +105,6 @@ export function createArchive(
 
     const archive = proc.stdout
 
-    // Archive created successfully — entries already have per-file hashes
     return { archive, entries, errors }
   } finally {
     unlinkSync(tmpList)

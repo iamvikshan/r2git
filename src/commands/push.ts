@@ -142,21 +142,12 @@ async function createAndUploadArchive(
 
   const s = p.spinner()
   s.start("Creating archive...")
-  const { archive, entries, errors: archiveErrors } = createArchive(pathsToArchive)
+  const { archive, errors: archiveErrors } = createArchive(pathsToArchive)
 
-  // Update manifest entries with metadata from archive creation, preserving hashes
-  for (const [path, entry] of Object.entries(entries)) {
-    if (manifest.entries[path]) {
-      // Preserve the hash from buildManifest, update other metadata
-      if (entry.mode) manifest.entries[path].mode = entry.mode
-      if (entry.mtime) manifest.entries[path].mtime = entry.mtime
-      if (entry.type) manifest.entries[path].type = entry.type
-    } else {
-      // New entry from archive (shouldn't happen if manifest is correct)
-      // Use hash from buildManifest if available, otherwise empty
-      manifest.entries[path] = entry
-    }
-  }
+  if (archiveErrors.length > 0) {
+=======
+  const { archive, errors: archiveErrors } = createArchive(resolved)
+>>>>>>> 831bef0 (fix: preserve per-file hashes instead of overwriting with archive hash)
 
   if (archiveErrors.length > 0) {
     for (const err of archiveErrors) {
