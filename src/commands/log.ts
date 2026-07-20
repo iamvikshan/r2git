@@ -3,7 +3,10 @@ import { resolveActiveProjectConfig, projectR2Prefix } from "../utils/config"
 import { listManifests, downloadManifest } from "../utils/store"
 import { getCurrentDirBasename } from "../utils/git"
 import { formatSize } from "../utils/log"
+import { readOption } from "../utils/args"
 import type { R2Config } from "../utils/types"
+
+const logOptions = ["--prefix", "--verbose", "-v"]
 
 async function printManifestEntry(
   m: { key: string; lastModified: string; size: number },
@@ -52,15 +55,8 @@ export async function cmdLog(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const prefixIdx = args.indexOf("--prefix")
-  if (
-    prefixIdx !== -1 &&
-    (!args[prefixIdx + 1]?.length || args[prefixIdx + 1]?.startsWith("-"))
-  ) {
-    p.cancel("Error: --prefix requires a value")
-    process.exit(1)
-  }
-  const pkgPrefix = prefixIdx !== -1 ? args[prefixIdx + 1] : cfg.backup.prefix
+  const pkgPrefix =
+    readOption(args, "--prefix", logOptions) ?? cfg.backup.prefix
   const r2Prefix = projectR2Prefix(cfg.project, pkgPrefix)
   const detailed = args.includes("--verbose") || args.includes("-v")
 

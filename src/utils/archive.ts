@@ -47,7 +47,7 @@ function writeTarString(
   target.set(bytes, offset)
 }
 
-function writeTarNumber(
+function writeTarOctal(
   target: Uint8Array,
   offset: number,
   length: number,
@@ -55,35 +55,20 @@ function writeTarNumber(
 ): void {
   const normalized = Math.max(0, Math.trunc(value))
   const octal = normalized.toString(8)
-  if (octal.length <= length - 1) {
-    writeTarString(
-      target,
-      offset,
-      length,
-      `${octal.padStart(length - 1, "0")}\0`,
-    )
-    return
-  }
-
-  let remaining = BigInt(normalized)
-  for (let index = offset + length - 1; index >= offset; index--) {
-    target[index] = Number(remaining & 0xffn)
-    remaining >>= 8n
-  }
-  if (remaining !== 0n || (target[offset] ?? 0) >= 0x80) {
+  if (octal.length > length - 1) {
     throw new Error(`Tar numeric field exceeds ${length} bytes: ${value}`)
   }
-  target[offset] = (target[offset] ?? 0) | 0x80
+  writeTarString(target, offset, length, `${octal.padStart(length - 1, "0")}\0`)
 }
 
 function createTarHeader(entry: PreparedArchiveEntry): Uint8Array<ArrayBuffer> {
   const header = new Uint8Array(new ArrayBuffer(TAR_BLOCK_SIZE))
   writeTarString(header, 0, 100, entry.archivePath)
-  writeTarNumber(header, 100, 8, entry.mode)
-  writeTarNumber(header, 108, 8, 0)
-  writeTarNumber(header, 116, 8, 0)
-  writeTarNumber(header, 124, 12, entry.size)
-  writeTarNumber(header, 136, 12, Math.floor(entry.mtimeMs / 1000))
+  writeTarOctal(header, 100, 8, entry.mode)
+  writeTarOctal(header, 108, 8, 0)
+  writeTarOctal(header, 116, 8, 0)
+  writeTarOctal(header, 124, 12, entry.size)
+  writeTarOctal(header, 136, 12, Math.floor(entry.mtimeMs / 1000))
   header.fill(0x20, 148, 156)
   header[156] = 0x30
   writeTarString(header, 257, 6, "ustar\0")

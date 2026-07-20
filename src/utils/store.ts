@@ -28,6 +28,14 @@ export function createArchiveUpload(
   }
 }
 
+export async function deleteArchive(
+  r2: R2Config,
+  archiveKey: string,
+): Promise<void> {
+  await deleteObject(r2, archiveKey)
+  debug(`Deleted partial archive ${archiveKey}`, "store")
+}
+
 /**
  * Download an archive from R2.
  */

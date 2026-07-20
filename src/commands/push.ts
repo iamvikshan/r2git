@@ -4,8 +4,10 @@ import { getCurrentDirBasename } from "../utils/git"
 import { resolvePath, resolvePaths, buildPathContext } from "../utils/fs"
 import { buildManifest, diffManifests } from "../utils/manifest"
 import { createArchive } from "../utils/archive"
+import { readOption } from "../utils/args"
 import {
   createArchiveUpload,
+  deleteArchive,
   uploadManifest,
   getLatestManifest,
   enforceManifestRetention,
@@ -21,6 +23,19 @@ import {
 } from "../utils/log"
 import type { ResolvedConfig } from "../utils/types"
 import type { Manifest, PushResult } from "../utils/store-types"
+
+const pushOptions = [
+  "--keep",
+  "--prefix",
+  "--dry-run",
+  "-n",
+  "--yes",
+  "-y",
+  "--quiet",
+  "-q",
+  "--verbose",
+  "-v",
+]
 
 async function buildLocalManifest(cfg: ResolvedConfig): Promise<{
   manifest: Manifest
@@ -152,6 +167,19 @@ async function createAndUploadArchive(
     s.stop("Archive creation or upload failed!")
     logError(reason, "archive")
     result.errors.push({ path: "archive", reason })
+    try {
+      await deleteArchive(cfg.r2, upload.key)
+    } catch (cleanupError) {
+      const cleanupReason =
+        cleanupError instanceof Error
+          ? cleanupError.message
+          : String(cleanupError)
+      warn(`Could not remove partial archive: ${cleanupReason}`, "archive")
+      result.errors.push({
+        path: upload.key,
+        reason: `Could not remove partial archive: ${cleanupReason}`,
+      })
+    }
     return false
   }
 
@@ -270,14 +298,9 @@ function parsePushArgs(
   dryRun: boolean
   quiet: boolean
 } {
-  const keepIdx = args.indexOf("--keep")
   let retention = cfg.backup.retention
-  if (keepIdx !== -1) {
-    const keepValue = args[keepIdx + 1]
-    if (!keepValue || keepValue.trim() === "") {
-      p.cancel("Error: --keep requires a numeric value")
-      process.exit(1)
-    }
+  const keepValue = readOption(args, "--keep", pushOptions)
+  if (keepValue !== undefined) {
     const parsed = Number(keepValue)
     if (isNaN(parsed) || !Number.isInteger(parsed) || parsed < 1) {
       p.cancel("Error: --keep must be a positive integer (minimum 1)")
@@ -285,16 +308,8 @@ function parsePushArgs(
     }
     retention = parsed
   }
-  const prefixIdx = args.indexOf("--prefix")
-  let pkgPrefix = cfg.backup.prefix
-  if (prefixIdx !== -1) {
-    const prefixValue = args[prefixIdx + 1]
-    if (!prefixValue || prefixValue.startsWith("-")) {
-      p.cancel("Error: --prefix requires a value")
-      process.exit(1)
-    }
-    pkgPrefix = prefixValue
-  }
+  const pkgPrefix =
+    readOption(args, "--prefix", pushOptions) ?? cfg.backup.prefix
   const dryRun = args.includes("--dry-run") || args.includes("-n")
   const quiet = args.includes("--quiet") || args.includes("-q")
 

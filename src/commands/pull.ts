@@ -14,19 +14,11 @@ import {
   downloadManifest,
 } from "../utils/store"
 import { warn, error as logError, formatSize } from "../utils/log"
+import { readOption } from "../utils/args"
 import type { ResolvedConfig } from "../utils/types"
 import type { Manifest, PullResult } from "../utils/store-types"
 
-function readOption(args: string[], name: string): string | null {
-  const index = args.indexOf(name)
-  if (index === -1) return null
-  const value = args[index + 1]
-  if (!value || value.startsWith("-")) {
-    p.cancel(`Error: ${name} requires a value`)
-    process.exit(1)
-  }
-  return value
-}
+const pullOptions = ["--backup", "--dry-run", "-n", "--interactive", "-i"]
 
 async function resolveSpecificManifest(
   cfg: ResolvedConfig,
@@ -196,7 +188,7 @@ export async function cmdPull(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const specificKey = readOption(args, "--backup")
+  const specificKey = readOption(args, "--backup", pullOptions)
   const dryRun = args.includes("--dry-run") || args.includes("-n")
   const interactive = args.includes("--interactive") || args.includes("-i")
 

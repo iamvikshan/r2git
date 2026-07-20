@@ -14,7 +14,7 @@ export type ManifestEntry = {
   size: number
   /** Last modified timestamp (ISO 8601) */
   mtime: string
-  /** "file" for regular files, "symlink-tar" for symlink compatibility */
+  /** "file" for regular files; "symlink-tar" marks symlinks (legacy name) */
   type: ObjectType
 }
 

@@ -3,18 +3,9 @@ import { getCurrentDirBasename } from "../utils/git"
 import { info } from "../utils/log"
 import { projectR2Prefix, resolveActiveProjectConfig } from "../utils/config"
 import { cleanupOrphanedArchives } from "../utils/store"
+import { readOption } from "../utils/args"
 
-function readOption(args: string[], name: string): string | undefined {
-  const index = args.indexOf(name)
-  if (index === -1) return undefined
-
-  const value = args[index + 1]
-  if (!value || value.startsWith("-")) {
-    p.cancel(`Error: ${name} requires a value`)
-    process.exit(1)
-  }
-  return value
-}
+const cleanupOptions = ["--min-age", "--prefix", "--yes", "-y"]
 
 export async function cmdCleanup(args: string[]): Promise<void> {
   const cfg = await resolveActiveProjectConfig(getCurrentDirBasename())
@@ -25,14 +16,14 @@ export async function cmdCleanup(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const hoursValue = readOption(args, "--min-age") ?? "24"
+  const hoursValue = readOption(args, "--min-age", cleanupOptions) ?? "24"
   const minAgeHours = Number(hoursValue)
   if (!Number.isFinite(minAgeHours) || minAgeHours < 1) {
     p.cancel("Error: --min-age must be a number of hours greater than zero")
     process.exit(1)
   }
 
-  const prefix = readOption(args, "--prefix")
+  const prefix = readOption(args, "--prefix", cleanupOptions)
   const dryRun = !args.includes("--yes") && !args.includes("-y")
   const projectPrefix = projectR2Prefix(
     cfg.project,
