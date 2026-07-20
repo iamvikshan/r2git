@@ -1,5 +1,5 @@
 import { rmSync, mkdtempSync, lstatSync, realpathSync } from "node:fs"
-import { join, dirname } from "node:path"
+import { join, dirname, isAbsolute, relative, resolve, sep } from "node:path"
 import { tmpdir } from "node:os"
 import * as p from "@clack/prompts"
 import {
@@ -18,6 +18,44 @@ import type { Manifest } from "../utils/store-types"
 
 type GlobalCfg =
   ReturnType<typeof loadGlobalConfig> extends Promise<infer T> ? T : never
+
+function isPathWithin(path: string, root: string): boolean {
+  const relativePath = relative(root, path)
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." &&
+      !relativePath.startsWith(`..${sep}`) &&
+      !isAbsolute(relativePath))
+  )
+}
+
+function isMissingPathError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT"
+}
+
+function validateCloneDestination(
+  absolutePath: string,
+  cloneRoot: string,
+): string | undefined {
+  const destination = resolve(absolutePath)
+  if (!isPathWithin(destination, cloneRoot)) return undefined
+
+  let existingParent = dirname(destination)
+  for (;;) {
+    try {
+      lstatSync(existingParent)
+      break
+    } catch (error) {
+      if (!isMissingPathError(error)) throw error
+      const nextParent = dirname(existingParent)
+      if (nextParent === existingParent) throw error
+      existingParent = nextParent
+    }
+  }
+
+  const canonicalParent = realpathSync(existingParent)
+  return isPathWithin(canonicalParent, cloneRoot) ? destination : undefined
+}
 
 /**
  * Restore all files from an archive-based manifest.
@@ -73,50 +111,16 @@ async function restoreFromManifest(
   let cached = 0
   let errors = 0
 
-  // Track resolved paths to prevent symlink parent attacks
   const cloneRoot = realpathSync(process.cwd())
-  const restoredSymlinks = new Set<string>()
 
   for (const [path, entry] of entries) {
     try {
-      const absolutePath = resolvePath(path, ctx)
-
-      // Validate that the resolved path is within the clone root
-      const destDir = dirname(absolutePath)
-      try {
-        const resolvedDest = realpathSync(destDir)
-        if (!resolvedDest.startsWith(cloneRoot + "/") && resolvedDest !== cloneRoot) {
-          logError(`Path ${path} resolves outside clone root, skipping`, "clone")
-          errors++
-          continue
-        }
-      } catch {
-        // Parent directory doesn't exist yet, check the path itself
-        if (!destDir.startsWith(cloneRoot + "/") && destDir !== cloneRoot) {
-          logError(`Path ${path} is outside clone root, skipping`, "clone")
-          errors++
-          continue
-        }
-      }
-
-      // Check if any parent directory is a restored symlink
-      let parentPath = dirname(absolutePath)
-      let hasSymlinkParent = false
-      while (parentPath.startsWith(cloneRoot)) {
-        if (restoredSymlinks.has(parentPath)) {
-          logError(
-            `Path ${path} has symlink parent ${parentPath}, skipping to prevent traversal`,
-            "clone",
-          )
-          hasSymlinkParent = true
-          break
-        }
-        const nextParent = dirname(parentPath)
-        if (nextParent === parentPath) break
-        parentPath = nextParent
-      }
-
-      if (hasSymlinkParent) {
+      const absolutePath = validateCloneDestination(
+        resolvePath(path, ctx),
+        cloneRoot,
+      )
+      if (absolutePath === undefined) {
+        logError(`Path ${path} resolves outside clone root, skipping`, "clone")
         errors++
         continue
       }
@@ -124,10 +128,6 @@ async function restoreFromManifest(
       const status = await restoreSingleFile(path, absolutePath, entry, tmpDir)
       if (status === "restored") {
         restored++
-        // Track if this was a symlink
-        if (entry.type === "symlink-tar") {
-          restoredSymlinks.add(absolutePath)
-        }
       } else if (status === "cached") {
         cached++
       } else {
@@ -190,7 +190,11 @@ async function promptProjectName(): Promise<string> {
     p.cancel("Cancelled.")
     process.exit(0)
   }
-  return typed as string
+  if (typeof typed !== "string") {
+    p.cancel("Invalid project name.")
+    process.exit(1)
+  }
+  return typed
 }
 
 async function lookupLatestBackup(
