@@ -134,7 +134,7 @@ async function createAndUploadArchive(
 
   const s = p.spinner()
   s.start("Creating archive...")
-  const { archive, errors: archiveErrors } = await createArchive(pathsToArchive)
+  const { archive, errors: archiveErrors } = createArchive(pathsToArchive)
 
   if (archiveErrors.length > 0) {
     for (const err of archiveErrors) {
