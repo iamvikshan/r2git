@@ -51,7 +51,11 @@ export function readOption(args: string[], name: string): string | undefined {
 
   const index = args.indexOf(name)
   const value = args[index + 1]
-  if (!value || optionNames.has(value)) {
+  if (
+    !value ||
+    optionNames.has(value) ||
+    [...optionNames].some(option => value.startsWith(`${option}=`))
+  ) {
     p.cancel(`Error: ${name} requires a value`)
     process.exit(1)
   }
