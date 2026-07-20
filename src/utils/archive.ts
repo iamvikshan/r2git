@@ -2,6 +2,7 @@ import { lstatSync, mkdirSync, readlinkSync } from "node:fs"
 import type { UploadSink } from "./r2"
 
 const TAR_BLOCK_SIZE = 512
+const TAR_SIZE_MAX = Number.parseInt("77777777777", 8)
 const textEncoder = new TextEncoder()
 
 type PreparedArchiveEntry =
@@ -61,16 +62,23 @@ function writeTarOctal(
   writeTarString(target, offset, length, `${octal.padStart(length - 1, "0")}\0`)
 }
 
-function createTarHeader(entry: PreparedArchiveEntry): Uint8Array<ArrayBuffer> {
+function createTarHeader(
+  entry: PreparedArchiveEntry,
+  options: {
+    archivePath?: string
+    size?: number
+    typeFlag?: number
+  } = {},
+): Uint8Array<ArrayBuffer> {
   const header = new Uint8Array(new ArrayBuffer(TAR_BLOCK_SIZE))
-  writeTarString(header, 0, 100, entry.archivePath)
+  writeTarString(header, 0, 100, options.archivePath ?? entry.archivePath)
   writeTarOctal(header, 100, 8, entry.mode)
   writeTarOctal(header, 108, 8, 0)
   writeTarOctal(header, 116, 8, 0)
-  writeTarOctal(header, 124, 12, entry.size)
+  writeTarOctal(header, 124, 12, options.size ?? entry.size)
   writeTarOctal(header, 136, 12, Math.floor(entry.mtimeMs / 1000))
   header.fill(0x20, 148, 156)
-  header[156] = 0x30
+  header[156] = options.typeFlag ?? 0x30
   writeTarString(header, 257, 6, "ustar\0")
   writeTarString(header, 263, 2, "00")
 
@@ -78,6 +86,15 @@ function createTarHeader(entry: PreparedArchiveEntry): Uint8Array<ArrayBuffer> {
   for (const byte of header) checksum += byte
   writeTarString(header, 148, 8, `${checksum.toString(8).padStart(6, "0")}\0 `)
   return header
+}
+
+function createPaxRecord(key: string, value: string): Uint8Array<ArrayBuffer> {
+  let length = 0
+  for (;;) {
+    const bytes = textEncoder.encode(`${length} ${key}=${value}\n`)
+    if (bytes.length === length) return bytes
+    length = bytes.length
+  }
 }
 
 function prepareArchiveEntries(
@@ -176,7 +193,26 @@ export async function createArchive(
 
   try {
     for (const entry of entries) {
-      await writer.write(createTarHeader(entry))
+      if (entry.size > TAR_SIZE_MAX) {
+        const paxData = createPaxRecord("size", String(entry.size))
+        await writer.write(
+          createTarHeader(entry, {
+            archivePath: `PaxHeaders/${entry.expectedHash}`,
+            size: paxData.length,
+            typeFlag: 0x78,
+          }),
+        )
+        await writer.write(paxData)
+        const paxPadding =
+          (TAR_BLOCK_SIZE - (paxData.length % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE
+        if (paxPadding > 0) await writer.write(new Uint8Array(paxPadding))
+      }
+
+      await writer.write(
+        createTarHeader(entry, {
+          size: entry.size > TAR_SIZE_MAX ? 0 : entry.size,
+        }),
+      )
       let writtenBytes = 0
       const hasher = new Bun.CryptoHasher("sha256")
 

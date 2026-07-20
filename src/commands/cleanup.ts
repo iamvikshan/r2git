@@ -5,8 +5,6 @@ import { projectR2Prefix, resolveActiveProjectConfig } from "../utils/config"
 import { cleanupOrphanedArchives } from "../utils/store"
 import { readOption } from "../utils/args"
 
-const cleanupOptions = ["--min-age", "--prefix", "--yes", "-y"]
-
 export async function cmdCleanup(args: string[]): Promise<void> {
   const cfg = await resolveActiveProjectConfig(getCurrentDirBasename())
   if (!cfg.r2.accountId || !cfg.r2.accessKeyId || !cfg.r2.secretAccessKey) {
@@ -16,14 +14,14 @@ export async function cmdCleanup(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const hoursValue = readOption(args, "--min-age", cleanupOptions) ?? "24"
+  const hoursValue = readOption(args, "--min-age") ?? "24"
   const minAgeHours = Number(hoursValue)
   if (!Number.isFinite(minAgeHours) || minAgeHours < 1) {
     p.cancel("Error: --min-age must be a number of hours greater than zero")
     process.exit(1)
   }
 
-  const prefix = readOption(args, "--prefix", cleanupOptions)
+  const prefix = readOption(args, "--prefix")
   const dryRun = !args.includes("--yes") && !args.includes("-y")
   const projectPrefix = projectR2Prefix(
     cfg.project,

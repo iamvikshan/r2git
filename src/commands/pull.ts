@@ -18,8 +18,6 @@ import { readOption } from "../utils/args"
 import type { ResolvedConfig } from "../utils/types"
 import type { Manifest, PullResult } from "../utils/store-types"
 
-const pullOptions = ["--backup", "--dry-run", "-n", "--interactive", "-i"]
-
 async function resolveSpecificManifest(
   cfg: ResolvedConfig,
   r2Prefix: string,
@@ -188,7 +186,7 @@ export async function cmdPull(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const specificKey = readOption(args, "--backup", pullOptions)
+  const specificKey = readOption(args, "--backup")
   const dryRun = args.includes("--dry-run") || args.includes("-n")
   const interactive = args.includes("--interactive") || args.includes("-i")
 

@@ -1,15 +1,30 @@
 import * as p from "@clack/prompts"
 
-export function readOption(
-  args: string[],
-  name: string,
-  optionNames: readonly string[],
-): string | undefined {
-  const index = args.indexOf(name)
-  if (index === -1) return undefined
+export function readOption(args: string[], name: string): string | undefined {
+  const inlinePrefix = `${name}=`
+  const matches = args.filter(
+    argument => argument === name || argument.startsWith(inlinePrefix),
+  )
+  if (matches.length === 0) return undefined
+  if (matches.length > 1) {
+    p.cancel(`Error: ${name} may only be specified once`)
+    process.exit(1)
+  }
 
+  const match = matches[0]
+  if (!match) return undefined
+  if (match.startsWith(inlinePrefix)) {
+    const value = match.slice(inlinePrefix.length)
+    if (!value) {
+      p.cancel(`Error: ${name} requires a value`)
+      process.exit(1)
+    }
+    return value
+  }
+
+  const index = args.indexOf(name)
   const value = args[index + 1]
-  if (!value || optionNames.includes(value)) {
+  if (!value || value.startsWith("-")) {
     p.cancel(`Error: ${name} requires a value`)
     process.exit(1)
   }

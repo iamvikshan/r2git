@@ -24,19 +24,6 @@ import {
 import type { ResolvedConfig } from "../utils/types"
 import type { Manifest, PushResult } from "../utils/store-types"
 
-const pushOptions = [
-  "--keep",
-  "--prefix",
-  "--dry-run",
-  "-n",
-  "--yes",
-  "-y",
-  "--quiet",
-  "-q",
-  "--verbose",
-  "-v",
-]
-
 async function buildLocalManifest(cfg: ResolvedConfig): Promise<{
   manifest: Manifest
   pathResults: PathResult[]
@@ -299,7 +286,7 @@ function parsePushArgs(
   quiet: boolean
 } {
   let retention = cfg.backup.retention
-  const keepValue = readOption(args, "--keep", pushOptions)
+  const keepValue = readOption(args, "--keep")
   if (keepValue !== undefined) {
     const parsed = Number(keepValue)
     if (isNaN(parsed) || !Number.isInteger(parsed) || parsed < 1) {
@@ -308,8 +295,7 @@ function parsePushArgs(
     }
     retention = parsed
   }
-  const pkgPrefix =
-    readOption(args, "--prefix", pushOptions) ?? cfg.backup.prefix
+  const pkgPrefix = readOption(args, "--prefix") ?? cfg.backup.prefix
   const dryRun = args.includes("--dry-run") || args.includes("-n")
   const quiet = args.includes("--quiet") || args.includes("-q")
 

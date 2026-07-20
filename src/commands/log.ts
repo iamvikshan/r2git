@@ -6,8 +6,6 @@ import { formatSize } from "../utils/log"
 import { readOption } from "../utils/args"
 import type { R2Config } from "../utils/types"
 
-const logOptions = ["--prefix", "--verbose", "-v"]
-
 async function printManifestEntry(
   m: { key: string; lastModified: string; size: number },
   r2: R2Config,
@@ -55,8 +53,7 @@ export async function cmdLog(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const pkgPrefix =
-    readOption(args, "--prefix", logOptions) ?? cfg.backup.prefix
+  const pkgPrefix = readOption(args, "--prefix") ?? cfg.backup.prefix
   const r2Prefix = projectR2Prefix(cfg.project, pkgPrefix)
   const detailed = args.includes("--verbose") || args.includes("-v")
 
