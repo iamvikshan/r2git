@@ -2,7 +2,7 @@ import { uploadObject, downloadObject, listObjects, deleteObject } from "./r2"
 import type { R2Config } from "./types"
 import type { Manifest } from "./store-types"
 import { serializeManifest, deserializeManifest } from "./manifest"
-import { debug, info } from "./log"
+import { debug, info, warn } from "./log"
 
 /**
  * Upload an archive to R2.
@@ -212,9 +212,16 @@ export async function cleanupOrphanedArchives(
   let deleted = 0
   if (!options.dryRun) {
     for (const archive of candidates) {
-      await deleteObject(r2, archive.key)
-      deleted++
-      info(`Deleted orphaned archive: ${archive.key}`, "cleanup")
+      try {
+        await deleteObject(r2, archive.key)
+        deleted++
+        info(`Deleted orphaned archive: ${archive.key}`, "cleanup")
+      } catch (e) {
+        warn(
+          `Could not delete orphaned archive ${archive.key}: ${e instanceof Error ? e.message : String(e)}`,
+          "cleanup",
+        )
+      }
     }
   }
 

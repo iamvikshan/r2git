@@ -1,10 +1,8 @@
 import type { Manifest, ManifestEntry, ObjectType } from "./store-types"
 import { hashFile, hashBuffer } from "./hash"
 import { checkPathExists, isSymlink, isDirectory, getFileSize } from "./fs"
-import { lstatSync } from "node:fs"
+import { lstatSync, readdirSync } from "node:fs"
 import picomatch from "picomatch"
-
-import { Glob } from "bun"
 
 /**
  * Get file mode as octal string (e.g. "0644").
@@ -113,32 +111,42 @@ function expandDirectory(
   const expanded: Array<{ original: string; absolute: string }> = []
   const errors: Array<{ path: string; reason: string }> = []
 
-  try {
-    const glob = new Glob("**/*")
-    for (const entry of glob.scanSync({
-      cwd: dirPath,
-      absolute: true,
-      onlyFiles: false,
-      dot: true,
-    })) {
+  function walk(currentDir: string, relativeDir: string): void {
+    let names: string[]
+    try {
+      names = readdirSync(currentDir)
+    } catch (e) {
+      errors.push({
+        path: relativeDir ? `${originalPrefix}/${relativeDir}` : originalPrefix,
+        reason: e instanceof Error ? e.message : String(e),
+      })
+      return
+    }
+
+    for (const name of names) {
+      const relativePath = relativeDir ? `${relativeDir}/${name}` : name
+      const originalPath = `${originalPrefix}/${relativePath}`
+      if (pathOrAncestorIgnored(originalPath, isIgnored)) continue
+
+      const absolutePath = `${currentDir}/${name}`
       try {
-        if (lstatSync(entry).isDirectory()) continue
-      } catch {
-        errors.push({ path: entry, reason: "Failed to determine file type" })
+        if (lstatSync(absolutePath).isDirectory()) {
+          walk(absolutePath, relativePath)
+          continue
+        }
+      } catch (e) {
+        errors.push({
+          path: originalPath,
+          reason: e instanceof Error ? e.message : String(e),
+        })
         continue
       }
-      const relPath = entry.slice(dirPath.length).replace(/^\//, "")
-      const originalPath = `${originalPrefix}/${relPath}`
-      if (!pathOrAncestorIgnored(originalPath, isIgnored)) {
-        expanded.push({ original: originalPath, absolute: entry })
-      }
+
+      expanded.push({ original: originalPath, absolute: absolutePath })
     }
-  } catch (e) {
-    errors.push({
-      path: originalPrefix,
-      reason: `Failed to expand directory: ${e instanceof Error ? e.message : String(e)}`,
-    })
   }
+
+  walk(dirPath, "")
 
   return { expanded, errors }
 }

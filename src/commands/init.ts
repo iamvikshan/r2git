@@ -115,7 +115,8 @@ function importedBucket(
   envBucket: string | undefined,
   configuredBucket: string | undefined,
 ): string {
-  return envBucket ?? configuredBucket ?? "r2git"
+  const normalizedEnvBucket = envBucket === "" ? undefined : envBucket
+  return normalizedEnvBucket ?? configuredBucket ?? "r2git"
 }
 
 export async function cmdInit(): Promise<void> {

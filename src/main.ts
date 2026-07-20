@@ -46,7 +46,7 @@ PUSH/PULL/CLEANUP FLAGS
   -n, --dry-run             Print actions without executing
   -i, --interactive         Pick backup to pull interactively
   --keep <N>                Number of backups to keep (push only)
-  --prefix <p>              Override backup prefix (push/log only)
+  --prefix <p>              Override backup prefix (push/log/cleanup only)
   --backup <key>            Specific backup key to pull (pull only)
   --min-age <hours>         Minimum orphan age (cleanup only, default: 24)
 `)

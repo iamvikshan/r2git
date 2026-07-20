@@ -197,7 +197,7 @@ commit.**
 
 ### Cleanup
 
-- Dry-run by default; pass `--yes` to delete eligible orphaned archives
+- Dry-run by default; pass `-y, --yes` to delete eligible orphaned archives
 - `--min-age <hours>`: Minimum orphan age before deletion (default: 24)
 - `--prefix <p>`: Override backup prefix
 

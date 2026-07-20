@@ -3,6 +3,7 @@ import {
   mkdirSync,
   copyFileSync,
   lstatSync,
+  readFileSync,
   readlinkSync,
   symlinkSync,
   unlinkSync,
@@ -50,7 +51,10 @@ export async function restoreSingleFile(
 
   if (entry.type === "symlink-tar") {
     try {
-      const linkTarget = readlinkSync(sourcePath)
+      const sourceStat = lstatSync(sourcePath)
+      const linkTarget = sourceStat.isSymbolicLink()
+        ? readlinkSync(sourcePath)
+        : readFileSync(sourcePath, "utf8")
       try {
         unlinkSync(absolutePath)
       } catch {}

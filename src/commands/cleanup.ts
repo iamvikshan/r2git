@@ -6,7 +6,14 @@ import { cleanupOrphanedArchives } from "../utils/store"
 
 function readOption(args: string[], name: string): string | undefined {
   const index = args.indexOf(name)
-  return index === -1 ? undefined : args[index + 1]
+  if (index === -1) return undefined
+
+  const value = args[index + 1]
+  if (!value || value.startsWith("-")) {
+    p.cancel(`Error: ${name} requires a value`)
+    process.exit(1)
+  }
+  return value
 }
 
 export async function cmdCleanup(args: string[]): Promise<void> {
@@ -26,8 +33,11 @@ export async function cmdCleanup(args: string[]): Promise<void> {
   }
 
   const prefix = readOption(args, "--prefix")
-  const dryRun = !args.includes("--yes")
-  const projectPrefix = projectR2Prefix(cfg.project, prefix)
+  const dryRun = !args.includes("--yes") && !args.includes("-y")
+  const projectPrefix = projectR2Prefix(
+    cfg.project,
+    prefix ?? cfg.backup.prefix,
+  )
   const result = await cleanupOrphanedArchives(cfg.r2, projectPrefix, {
     dryRun,
     minAgeMs: minAgeHours * 60 * 60 * 1000,
