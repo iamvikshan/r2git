@@ -1,4 +1,11 @@
-import { uploadObject, downloadObject, listObjects, deleteObject } from "./r2"
+import {
+  createUploadSink,
+  uploadObject,
+  downloadObject,
+  downloadObjectStream,
+  listObjects,
+  deleteObject,
+} from "./r2"
 import type { R2Config } from "./types"
 import type { Manifest } from "./store-types"
 import { serializeManifest, deserializeManifest } from "./manifest"
@@ -7,15 +14,18 @@ import { debug, info, warn } from "./log"
 /**
  * Upload an archive to R2.
  */
-export async function uploadArchive(
+export function createArchiveUpload(
   r2: R2Config,
-  archive: Uint8Array,
   projectPrefix: string,
-): Promise<string> {
+): {
+  key: string
+  open: () => ReturnType<typeof createUploadSink>
+} {
   const key = archiveKey(projectPrefix)
-  await uploadObject(r2, key, archive, "application/gzip")
-  debug(`Uploaded archive ${key}`, "store")
-  return key
+  return {
+    key,
+    open: () => createUploadSink(r2, key, "application/gzip"),
+  }
 }
 
 /**
@@ -24,8 +34,8 @@ export async function uploadArchive(
 export async function downloadArchive(
   r2: R2Config,
   archiveKey: string,
-): Promise<ArrayBuffer> {
-  return downloadObject(r2, archiveKey)
+): Promise<{ stream: ReadableStream<Uint8Array>; size: number | null }> {
+  return downloadObjectStream(r2, archiveKey)
 }
 
 export async function uploadManifest(

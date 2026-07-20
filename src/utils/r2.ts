@@ -1,10 +1,16 @@
 import { AwsClient } from "aws4fetch"
+import { S3Client } from "bun"
 import type { R2Config } from "./types"
 
 export type AssetMeta = {
   key: string
   size: number
   lastModified: string
+}
+
+export type UploadSink = {
+  write(chunk: Uint8Array): number | Promise<number>
+  end(error?: Error): number | Promise<number>
 }
 
 export function createClient(cfg: R2Config): AwsClient {
@@ -43,6 +49,23 @@ export async function uploadObject(
   }
 }
 
+export function createUploadSink(
+  cfg: R2Config,
+  key: string,
+  contentType: string,
+): UploadSink {
+  const client = new S3Client({
+    accessKeyId: cfg.accessKeyId ?? "",
+    secretAccessKey: cfg.secretAccessKey ?? "",
+    bucket: cfg.bucket ?? "",
+    endpoint: `https://${cfg.accountId}.r2.cloudflarestorage.com`,
+    region: "auto",
+    partSize: 5 * 1024 * 1024,
+    queueSize: 1,
+  })
+  return client.file(key, { type: contentType }).writer()
+}
+
 export async function downloadObject(
   cfg: R2Config,
   key: string,
@@ -54,6 +77,27 @@ export async function downloadObject(
     throw new Error(`R2 download failed [${res.status}]: ${await res.text()}`)
   }
   return res.arrayBuffer()
+}
+
+export async function downloadObjectStream(
+  cfg: R2Config,
+  key: string,
+): Promise<{ stream: ReadableStream<Uint8Array>; size: number | null }> {
+  const client = createClient(cfg)
+  const url = objectUrl(cfg, key)
+  const res = await client.fetch(url, { method: "GET" })
+  if (!res.ok) {
+    throw new Error(`R2 download failed [${res.status}]: ${await res.text()}`)
+  }
+  if (!res.body) {
+    throw new Error("R2 download failed: response did not include a body")
+  }
+  const contentLength = res.headers.get("content-length")
+  const size = contentLength === null ? null : Number(contentLength)
+  return {
+    stream: res.body,
+    size: size !== null && Number.isFinite(size) ? size : null,
+  }
 }
 
 export async function deleteObject(cfg: R2Config, key: string): Promise<void> {

@@ -53,10 +53,14 @@ export async function cmdLog(args: string[]): Promise<void> {
   }
 
   const prefixIdx = args.indexOf("--prefix")
-  const pkgPrefix =
-    prefixIdx !== -1
-      ? (args[prefixIdx + 1] ?? cfg.backup.prefix)
-      : cfg.backup.prefix
+  if (
+    prefixIdx !== -1 &&
+    (!args[prefixIdx + 1]?.length || args[prefixIdx + 1]?.startsWith("-"))
+  ) {
+    p.cancel("Error: --prefix requires a value")
+    process.exit(1)
+  }
+  const pkgPrefix = prefixIdx !== -1 ? args[prefixIdx + 1] : cfg.backup.prefix
   const r2Prefix = projectR2Prefix(cfg.project, pkgPrefix)
   const detailed = args.includes("--verbose") || args.includes("-v")
 

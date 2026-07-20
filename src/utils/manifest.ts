@@ -1,7 +1,7 @@
 import type { Manifest, ManifestEntry, ObjectType } from "./store-types"
 import { hashFile, hashBuffer } from "./hash"
 import { checkPathExists, isSymlink, isDirectory, getFileSize } from "./fs"
-import { lstatSync, readdirSync } from "node:fs"
+import { lstatSync, readlinkSync, readdirSync } from "node:fs"
 import picomatch from "picomatch"
 
 /**
@@ -29,28 +29,6 @@ function getFileMTime(filePath: string): string {
 }
 
 /**
- * Create a tar of a single symlink, preserving the link target.
- * Returns the tar buffer.
- */
-export function tarSymlink(filePath: string): Uint8Array {
-  const proc = Bun.spawnSync([
-    "tar",
-    "-cf",
-    "-",
-    "-C",
-    "/",
-    "--",
-    filePath.slice(1), // strip leading /
-  ])
-  if (!proc.success) {
-    throw new Error(
-      `Failed to tar symlink ${filePath}: ${proc.stderr.toString()}`,
-    )
-  }
-  return proc.stdout
-}
-
-/**
  * Build a manifest entry for a single file path.
  * Handles regular files and symlinks differently.
  */
@@ -62,20 +40,21 @@ export async function buildEntry(
   const symlink = isSymlink(absolutePath)
 
   if (symlink || entryType === "symlink-tar") {
-    // Tar the symlink individually (works for dangling symlinks too)
-    const tarData = tarSymlink(absolutePath)
-    const hash = hashBuffer(tarData)
+    const linkTarget = Uint8Array.from(
+      readlinkSync(absolutePath, { encoding: "buffer" }),
+    )
+    const hash = hashBuffer(linkTarget)
     const mode = getFileMode(absolutePath)
     const mtime = getFileMTime(absolutePath)
     return {
       entry: {
         hash,
         mode,
-        size: tarData.length,
+        size: linkTarget.length,
         mtime,
         type: "symlink-tar",
       },
-      objectData: tarData,
+      objectData: linkTarget,
     }
   }
 
@@ -96,7 +75,7 @@ export async function buildEntry(
       mtime,
       type: "file",
     },
-    objectData: null, // caller reads the file directly for upload
+    objectData: null,
   }
 }
 

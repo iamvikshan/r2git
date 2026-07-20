@@ -1,11 +1,11 @@
 import * as p from "@clack/prompts"
 import { resolveActiveProjectConfig, projectR2Prefix } from "../utils/config"
 import { getCurrentDirBasename } from "../utils/git"
-import { resolvePaths, buildPathContext } from "../utils/fs"
+import { resolvePath, resolvePaths, buildPathContext } from "../utils/fs"
 import { buildManifest, diffManifests } from "../utils/manifest"
 import { createArchive } from "../utils/archive"
 import {
-  uploadArchive,
+  createArchiveUpload,
   uploadManifest,
   getLatestManifest,
   enforceManifestRetention,
@@ -130,23 +130,30 @@ async function createAndUploadArchive(
 ): Promise<boolean> {
   const ctx = buildPathContext(cfg.project)
 
-  const pathsToArchive = resolvePaths(Object.keys(manifest.entries), ctx).map(
-    path => {
-      const entry = manifest.entries[path.original]
-      if (!entry) {
-        throw new Error(`Missing manifest entry for ${path.original}`)
-      }
-      return {
-        original: path.original,
-        absolute: path.absolute,
-        hash: entry.hash,
-      }
-    },
+  const pathsToArchive = Object.entries(manifest.entries).map(
+    ([original, entry]) => ({
+      original,
+      absolute: resolvePath(original, ctx),
+      hash: entry.hash,
+    }),
   )
+  const upload = createArchiveUpload(cfg.r2, r2Prefix)
 
   const s = p.spinner()
-  s.start("Creating archive...")
-  const { archive, errors: archiveErrors } = await createArchive(pathsToArchive)
+  s.start("Creating and uploading archive...")
+  let archiveSize = 0
+  let archiveErrors: Array<{ path: string; reason: string }> = []
+  try {
+    const archive = await createArchive(pathsToArchive, upload.open)
+    archiveSize = archive.size
+    archiveErrors = archive.errors
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e)
+    s.stop("Archive creation or upload failed!")
+    logError(reason, "archive")
+    result.errors.push({ path: "archive", reason })
+    return false
+  }
 
   if (archiveErrors.length > 0) {
     for (const err of archiveErrors) {
@@ -160,7 +167,7 @@ async function createAndUploadArchive(
     return false
   }
 
-  if (archive.length === 0) {
+  if (archiveSize === 0) {
     s.stop("Archive creation failed — no files to archive")
     logError("No files could be archived", "push")
     result.errors.push({
@@ -169,25 +176,11 @@ async function createAndUploadArchive(
     })
     return false
   }
-  s.stop(`Archive created (${formatSize(archive.length)})`)
-
-  const s2 = p.spinner()
-  s2.start("Uploading archive...")
-  try {
-    manifest.archiveKey = await uploadArchive(cfg.r2, archive, r2Prefix)
-    result.uploadedBytes = archive.length
-    result.newObjects = 1
-    s2.stop(`Archive uploaded: ${manifest.archiveKey}`)
-    return true
-  } catch (e) {
-    s2.stop("Archive upload failed!")
-    logError(e instanceof Error ? e.message : String(e), "archive")
-    result.errors.push({
-      path: "archive",
-      reason: e instanceof Error ? e.message : String(e),
-    })
-    return false
-  }
+  manifest.archiveKey = upload.key
+  result.uploadedBytes = archiveSize
+  result.newObjects = 1
+  s.stop(`Archive uploaded (${formatSize(archiveSize)}): ${upload.key}`)
+  return true
 }
 
 async function uploadManifestAndCleanup(

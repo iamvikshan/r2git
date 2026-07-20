@@ -54,8 +54,8 @@ export async function restoreSingleFile(
     try {
       const sourceStat = lstatSync(sourcePath)
       const linkTarget = sourceStat.isSymbolicLink()
-        ? readlinkSync(sourcePath)
-        : readFileSync(sourcePath, "utf8")
+        ? readlinkSync(sourcePath, { encoding: "buffer" })
+        : readFileSync(sourcePath)
       try {
         unlinkSync(absolutePath)
       } catch {}

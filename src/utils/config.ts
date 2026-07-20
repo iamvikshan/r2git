@@ -24,6 +24,10 @@ export function localConfigFilePath(): string {
 
 export const DEFAULT_PATHS: string[] = ["{cwd}/.env"]
 
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined
+}
+
 export function defaultProject(_name: string): ProjectConfig {
   return {
     backup: {
@@ -70,14 +74,19 @@ export function defaultConfig(): GlobalConfig {
     activeProject: undefined,
     projects: {},
     r2: {
-      accountId: process.env.R2_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID,
+      accountId:
+        nonEmptyString(process.env.R2_ACCOUNT_ID) ??
+        nonEmptyString(process.env.CLOUDFLARE_ACCOUNT_ID),
       accessKeyId:
-        process.env.R2_ACCESS_KEY_ID ?? process.env.CLOUDFLARE_ACCESS_KEY_ID,
+        nonEmptyString(process.env.R2_ACCESS_KEY_ID) ??
+        nonEmptyString(process.env.CLOUDFLARE_ACCESS_KEY_ID),
       secretAccessKey:
-        process.env.R2_SECRET_ACCESS_KEY ??
-        process.env.CLOUDFLARE_SECRET_ACCESS_KEY,
+        nonEmptyString(process.env.R2_SECRET_ACCESS_KEY) ??
+        nonEmptyString(process.env.CLOUDFLARE_SECRET_ACCESS_KEY),
       bucket:
-        process.env.R2_BUCKET ?? process.env.CLOUDFLARE_R2_BUCKET ?? "r2git",
+        nonEmptyString(process.env.R2_BUCKET) ??
+        nonEmptyString(process.env.CLOUDFLARE_R2_BUCKET) ??
+        "r2git",
     },
     dopplerToken: undefined,
   }
@@ -171,19 +180,11 @@ export async function loadGlobalConfig(): Promise<GlobalConfig> {
           : def.activeProject,
       projects: normalizeProjects(raw.projects),
       r2: {
-        accountId:
-          typeof rawR2.accountId === "string"
-            ? rawR2.accountId
-            : def.r2.accountId,
-        accessKeyId:
-          typeof rawR2.accessKeyId === "string"
-            ? rawR2.accessKeyId
-            : def.r2.accessKeyId,
+        accountId: nonEmptyString(rawR2.accountId) ?? def.r2.accountId,
+        accessKeyId: nonEmptyString(rawR2.accessKeyId) ?? def.r2.accessKeyId,
         secretAccessKey:
-          typeof rawR2.secretAccessKey === "string"
-            ? rawR2.secretAccessKey
-            : def.r2.secretAccessKey,
-        bucket: typeof rawR2.bucket === "string" ? rawR2.bucket : def.r2.bucket,
+          nonEmptyString(rawR2.secretAccessKey) ?? def.r2.secretAccessKey,
+        bucket: nonEmptyString(rawR2.bucket) ?? def.r2.bucket,
       },
       dopplerToken:
         typeof raw.dopplerToken === "string"
@@ -225,20 +226,20 @@ export async function resolveActiveProjectConfig(
   const local = await loadLocalConfig()
 
   const accountId =
-    process.env.R2_ACCOUNT_ID ??
-    process.env.CLOUDFLARE_ACCOUNT_ID ??
+    nonEmptyString(process.env.R2_ACCOUNT_ID) ??
+    nonEmptyString(process.env.CLOUDFLARE_ACCOUNT_ID) ??
     global.r2.accountId
   const accessKeyId =
-    process.env.R2_ACCESS_KEY_ID ??
-    process.env.CLOUDFLARE_ACCESS_KEY_ID ??
+    nonEmptyString(process.env.R2_ACCESS_KEY_ID) ??
+    nonEmptyString(process.env.CLOUDFLARE_ACCESS_KEY_ID) ??
     global.r2.accessKeyId
   const secretAccessKey =
-    process.env.R2_SECRET_ACCESS_KEY ??
-    process.env.CLOUDFLARE_SECRET_ACCESS_KEY ??
+    nonEmptyString(process.env.R2_SECRET_ACCESS_KEY) ??
+    nonEmptyString(process.env.CLOUDFLARE_SECRET_ACCESS_KEY) ??
     global.r2.secretAccessKey
   const bucket =
-    process.env.R2_BUCKET ??
-    process.env.CLOUDFLARE_R2_BUCKET ??
+    nonEmptyString(process.env.R2_BUCKET) ??
+    nonEmptyString(process.env.CLOUDFLARE_R2_BUCKET) ??
     global.r2.bucket
 
   const r2: R2Config = {

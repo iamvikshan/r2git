@@ -17,6 +17,17 @@ import { warn, error as logError, formatSize } from "../utils/log"
 import type { ResolvedConfig } from "../utils/types"
 import type { Manifest, PullResult } from "../utils/store-types"
 
+function readOption(args: string[], name: string): string | null {
+  const index = args.indexOf(name)
+  if (index === -1) return null
+  const value = args[index + 1]
+  if (!value || value.startsWith("-")) {
+    p.cancel(`Error: ${name} requires a value`)
+    process.exit(1)
+  }
+  return value
+}
+
 async function resolveSpecificManifest(
   cfg: ResolvedConfig,
   r2Prefix: string,
@@ -58,10 +69,14 @@ async function restoreFromArchive(
   const s = p.spinner()
   s.start("Downloading archive...")
 
-  let archiveData: ArrayBuffer
+  let archive: Awaited<ReturnType<typeof downloadArchive>>
   try {
-    archiveData = await downloadArchive(cfg.r2, manifest.archiveKey)
-    s.stop(`Archive downloaded (${formatSize(archiveData.byteLength)})`)
+    archive = await downloadArchive(cfg.r2, manifest.archiveKey)
+    s.stop(
+      archive.size === null
+        ? "Archive download started"
+        : `Archive download started (${formatSize(archive.size)})`,
+    )
   } catch (e) {
     s.stop("Archive download failed!")
     logError(e instanceof Error ? e.message : String(e), "pull")
@@ -72,7 +87,7 @@ async function restoreFromArchive(
   const s2 = p.spinner()
   s2.start("Extracting archive...")
 
-  const { errors: extractErrors } = extractArchive(archiveData, tmpDir)
+  const { errors: extractErrors } = await extractArchive(archive.stream, tmpDir)
 
   if (extractErrors.length > 0) {
     s2.stop("Extraction had errors")
@@ -181,10 +196,7 @@ export async function cmdPull(args: string[]): Promise<void> {
     process.exit(1)
   }
 
-  const specificKey =
-    args.indexOf("--backup") !== -1
-      ? (args[args.indexOf("--backup") + 1] ?? null)
-      : null
+  const specificKey = readOption(args, "--backup")
   const dryRun = args.includes("--dry-run") || args.includes("-n")
   const interactive = args.includes("--interactive") || args.includes("-i")
 

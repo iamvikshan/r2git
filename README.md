@@ -14,14 +14,14 @@ files too sensitive or too large to be committed to git.
 
 - **Git-Style Workflows**: Manage ignored files using `add`, `rm`, `status`,
   `push`, `pull`, `log`, `diff`, and `clone`.
-- **Content-Addressed Storage**: Files are stored by SHA-256 hash — automatic
-  deduplication, incremental uploads, and fast comparisons.
+- **Content-Addressed Archives**: Manifest entries and archive members use
+  SHA-256 content hashes for reliable comparisons and restores.
 - **Cloudflare R2 Backed**: High performance, zero-egress cost backups.
-- **Incremental Push**: Only uploads files that changed since the last backup.
-- **Cache-Aware Pull**: Skips downloading files that already match locally.
+- **Change-Aware Push**: Skips creating a backup when the manifest is unchanged.
+- **Cache-Aware Pull**: Skips rewriting files that already match locally.
 - **`r2git diff`**: Compare local files against the latest remote backup without
   downloading anything.
-- **Symlink Handling**: Symlinks are individually tarred and stored separately.
+- **Symlink Handling**: Raw symlink targets are preserved without dereferencing.
 - **VCS-Safe Layout**: Private credentials live in `~/.r2gitrc`, while
   repository-tracked paths live in `.r2gitconfig` (safe to commit to Git).
 - **Interactive TUI**: Beautiful user experiences powered by `@clack/prompts`.
@@ -52,6 +52,7 @@ npm install -g @syncron/r2git
 | **`r2git init`**                          | Interactive setup for global credentials (`~/.r2gitrc`) and local project config. |
 | **`r2git status`**                        | Show tracked files, hash-based diff against latest remote backup.                 |
 | **`r2git add [paths...]`**                | Start tracking files or directories (supports path variables).                    |
+| **`r2git add --ignore <patterns...>`**    | Add glob patterns excluded while expanding tracked directories.                   |
 | **`r2git rm [paths...]`**                 | Untrack files or directories.                                                     |
 | **`r2git push`**                          | Hash files, diff against remote, upload only changed objects + manifest.          |
 | **`r2git pull`**                          | Download and restore files — skips files already matching locally.                |
@@ -91,7 +92,8 @@ Example `.r2gitconfig`:
       "{cwd}/secrets.json",
       "{home}/.config/myapp/config.yaml",
       "{xdg_config}/myapp/credentials"
-    ]
+    ],
+    "ignores": ["{cwd}/cache/**", "**/*.tmp"]
   }
 }
 ```
@@ -100,19 +102,21 @@ Example `.r2gitconfig`:
 
 ## How It Works
 
-### Content-Addressed Object Store
+### Content-Addressed Archive Store
 
 r2git uses a git-like storage model:
 
-1. **Each file is SHA-256 hashed** — identical files are stored only once
-2. **Objects stored by hash** in R2: `projects/org/repo/objects/a3/8f2c...d4`
-3. **Manifests** map file paths to hashes:
+1. **Each file and symlink target is SHA-256 hashed** for change detection
+2. **Manifests** map configured file paths to hashes and metadata:
    `projects/org/repo/manifests/2026-07-18T07-58Z.json`
-4. **Push** diffs local hashes against the latest remote manifest — uploads only
-   new/changed objects
-5. **Pull** compares local file hashes against the manifest — downloads and
-   overwrites files whose local hashes are missing or differ
-6. **Symlinks** are individually tarred and stored as special objects
+3. **Archives** contain hash-addressed entries such as `entries/a38f2c...d4`,
+   allowing multiple configured paths with identical content to share one
+   archive member
+4. **Push** skips uploading when the local and latest remote manifests match;
+   otherwise it streams a new compressed archive to R2
+5. **Pull** streams the selected archive to extraction, then overwrites only
+   files whose local hashes are missing or differ
+6. **Symlinks** store their raw target bytes and are recreated during restore
 
 ### R2 Storage Layout
 
@@ -122,11 +126,9 @@ projects/org/repo/
 │   ├── 2026-07-18T07-58Z.json    ← full snapshot manifest
 │   ├── 2026-07-18T08-30Z.json
 │   └── ...
-└── objects/
-    ├── a3/
-    │   └── 8f2c...d4             ← content-addressed, deduplicated
-    ├── b7/
-    │   └── 1e9a...f2
+└── archives/
+    ├── 2026-07-18T07-58Z-a1b2c3.tar.gz
+    ├── 2026-07-18T08-30Z-d4e5f6.tar.gz
     └── ...
 ```
 
@@ -144,7 +146,8 @@ commit.**
   "project": "my-org/my-repo",
   "backup": {
     "retention": 5,
-    "paths": ["{cwd}/.env"]
+    "paths": ["{cwd}/.env"],
+    "ignores": []
   }
 }
 ```
@@ -200,6 +203,11 @@ commit.**
 - Dry-run by default; pass `-y, --yes` to delete eligible orphaned archives
 - `--min-age <hours>`: Minimum orphan age before deletion (default: 24)
 - `--prefix <p>`: Override backup prefix
+
+### Add
+
+- `r2git add --ignore <patterns...>`: Add one or more glob patterns;
+  comma-separated patterns are also accepted
 
 ---
 

@@ -35,10 +35,14 @@ async function restoreFromManifest(
   const s = p.spinner()
   s.start("Downloading archive...")
 
-  let archiveData: ArrayBuffer
+  let archive: Awaited<ReturnType<typeof downloadArchive>>
   try {
-    archiveData = await downloadArchive(globalConfig.r2, manifest.archiveKey)
-    s.stop(`Archive downloaded (${formatSize(archiveData.byteLength)})`)
+    archive = await downloadArchive(globalConfig.r2, manifest.archiveKey)
+    s.stop(
+      archive.size === null
+        ? "Archive download started"
+        : `Archive download started (${formatSize(archive.size)})`,
+    )
   } catch (e) {
     s.stop("Archive download failed!")
     logError(e instanceof Error ? e.message : String(e), "clone")
@@ -49,7 +53,7 @@ async function restoreFromManifest(
   const s2 = p.spinner()
   s2.start("Extracting archive...")
 
-  const { errors: extractErrors } = extractArchive(archiveData, tmpDir)
+  const { errors: extractErrors } = await extractArchive(archive.stream, tmpDir)
 
   if (extractErrors.length > 0) {
     s2.stop("Extraction had errors")
