@@ -1,6 +1,6 @@
 gitlab:
   enabled: true
-  owner: vikshan
+  projectId: 84514059
 
 github:
   enabled: true
