@@ -84,7 +84,7 @@ jobs:
         if:
           steps.tag_override.outputs.new_tag == '' &&
           steps.tag_from_commit.outputs.new_tag == ''
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: mathieudutour/github-tag-action@v7.0.0
         with:
           github_token: ${{ secrets.GH_TOKEN }}
           default_bump: ${{ github.event.inputs.bump_type || 'patch' }}
