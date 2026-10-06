@@ -51,7 +51,7 @@ jobs:
       make_latest: ${{ steps.detect.outputs.make_latest }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
@@ -136,7 +136,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.GH_TOKEN }}
@@ -206,7 +206,7 @@ jobs:
         run: npm publish --provenance --access public
 
       - name: Publish GitHub Release with Archived Binaries
-        uses: softprops/action-gh-release@v3.0.2
+        uses: softprops/action-gh-release@v3.0.3
         with:
           token: ${{ secrets.GH_TOKEN }}
           tag_name: ${{ needs.prepare.outputs.new_tag }}
