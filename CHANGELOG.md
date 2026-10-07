@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.1] - 2026-10-07
+### :bug: Bug Fixes
+- [`0e06281`](https://github.com/iamvikshan/r2git/commit/0e06281dba4bb7d55ba5b106e426dede637877f0) - **deps**: update dependency picomatch to ^4.0.7 *(PR [#5](https://github.com/iamvikshan/r2git/pull/5) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+### :wrench: Chores
+- [`4aa6d38`](https://github.com/iamvikshan/r2git/commit/4aa6d382a48fa4098be4906ac320d7eb20326f34) - **deps**: update dependency lint-staged to ^17.1.1 *(PR [#3](https://github.com/iamvikshan/r2git/pull/3) by [@renovate[bot]](https://github.com/apps/renovate))*
+- [`2adf45d`](https://github.com/iamvikshan/r2git/commit/2adf45d9341ca52a46f30d8b8ba4fb85c14ff84a) - **deps**: update github-actions *(PR [#4](https://github.com/iamvikshan/r2git/pull/4) by [@renovate[bot]](https://github.com/apps/renovate))*
+- [`916f91a`](https://github.com/iamvikshan/r2git/commit/916f91acf310f4eefa281a607d7e49f9e62ef32f) - **deps**: update bun to >=1.4.2 *(PR [#6](https://github.com/iamvikshan/r2git/pull/6) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.0] - 2026-07-20
 ### :sparkles: New Features
 - [`31c3944`](https://github.com/iamvikshan/r2git/commit/31c3944930aae4fdcb3e7d2bc1f948596083da1f) - bounded-memory archive backups, ignores, and safe cleanup *(PR [#2](https://github.com/iamvikshan/r2git/pull/2) by [@iamvikshan](https://github.com/iamvikshan))*
@@ -33,3 +43,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.0.1]: https://github.com/iamvikshan/r2git/compare/v0.0.0-0.root...v0.0.1
 [v0.1.0]: https://github.com/iamvikshan/r2git/compare/v0.0.1...v0.1.0
 [v0.2.0]: https://github.com/iamvikshan/r2git/compare/v0.1.0...v0.2.0
+[v0.2.1]: https://github.com/iamvikshan/r2git/compare/v0.2.0...v0.2.1
