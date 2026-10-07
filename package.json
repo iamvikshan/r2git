@@ -29,7 +29,7 @@
     "upd": "sudo apk upgrade --no-cache && bun upgrade && bun update --latest && bun f"
   },
   "dependencies": {
-    "@clack/prompts": "^1.7.0",
+    "@clack/prompts": "^1.8.1",
     "aws4fetch": "^1.0.20",
     "picomatch": "^4.0.7"
   },
