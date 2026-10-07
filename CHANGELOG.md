@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.2] - 2026-10-07
+### :bug: Bug Fixes
+- [`ebcac79`](https://github.com/iamvikshan/r2git/commit/ebcac79f5071c7ce0dfc88414aea16902c180544) - **deps**: update dependency @clack/prompts to ^1.8.1 *(PR [#9](https://github.com/iamvikshan/r2git/pull/9) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+### :wrench: Chores
+- [`3e8c920`](https://github.com/iamvikshan/r2git/commit/3e8c92086a13d4ef4685f7e774367ccf4e98082d) - **deps**: update dependency @types/bun to ^1.4.2 *(PR [#7](https://github.com/iamvikshan/r2git/pull/7) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.1] - 2026-10-07
 ### :bug: Bug Fixes
 - [`0e06281`](https://github.com/iamvikshan/r2git/commit/0e06281dba4bb7d55ba5b106e426dede637877f0) - **deps**: update dependency picomatch to ^4.0.7 *(PR [#5](https://github.com/iamvikshan/r2git/pull/5) by [@renovate[bot]](https://github.com/apps/renovate))*
@@ -44,3 +52,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.1.0]: https://github.com/iamvikshan/r2git/compare/v0.0.1...v0.1.0
 [v0.2.0]: https://github.com/iamvikshan/r2git/compare/v0.1.0...v0.2.0
 [v0.2.1]: https://github.com/iamvikshan/r2git/compare/v0.2.0...v0.2.1
+[v0.2.2]: https://github.com/iamvikshan/r2git/compare/v0.2.1...v0.2.2
