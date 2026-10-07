@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.3] - 2026-10-07
+### :wrench: Chores
+- [`e3f9662`](https://github.com/iamvikshan/r2git/commit/e3f9662e2e06497654561a655c0419ffcbb1b35a) - **deps**: update linters and formatters *(PR [#8](https://github.com/iamvikshan/r2git/pull/8) by [@renovate[bot]](https://github.com/apps/renovate))*
+- [`25875e3`](https://github.com/iamvikshan/r2git/commit/25875e386b61adeb654e1420a0eecc4dc0f756a4) - **deps**: update mathieudutour/github-tag-action action to v7 *(PR [#11](https://github.com/iamvikshan/r2git/pull/11) by [@renovate[bot]](https://github.com/apps/renovate))*
+- [`ce8fc58`](https://github.com/iamvikshan/r2git/commit/ce8fc58dc28291ba260df631b5790c6899d11eeb) - **deps**: update dependency oxlint-tsgolint to v7 *(PR [#10](https://github.com/iamvikshan/r2git/pull/10) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.2] - 2026-10-07
 ### :bug: Bug Fixes
 - [`ebcac79`](https://github.com/iamvikshan/r2git/commit/ebcac79f5071c7ce0dfc88414aea16902c180544) - **deps**: update dependency @clack/prompts to ^1.8.1 *(PR [#9](https://github.com/iamvikshan/r2git/pull/9) by [@renovate[bot]](https://github.com/apps/renovate))*
@@ -53,3 +60,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.2.0]: https://github.com/iamvikshan/r2git/compare/v0.1.0...v0.2.0
 [v0.2.1]: https://github.com/iamvikshan/r2git/compare/v0.2.0...v0.2.1
 [v0.2.2]: https://github.com/iamvikshan/r2git/compare/v0.2.1...v0.2.2
+[v0.2.3]: https://github.com/iamvikshan/r2git/compare/v0.2.2...v0.2.3
