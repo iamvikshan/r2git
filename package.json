@@ -36,9 +36,9 @@
   "devDependencies": {
     "@types/bun": "^1.4.2",
     "husky": "^9.1.7",
-    "lint-staged": "^17.1.1",
-    "oxfmt": "^0.59.0",
-    "oxlint": "^1.74.0",
+    "lint-staged": "^17.6.0",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
     "oxlint-tsgolint": "^0.25.0",
     "typescript": "^7.0.2"
   },
