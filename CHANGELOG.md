@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.5] - 2026-10-15
+### :wrench: Chores
+- [`37a11a3`](https://github.com/iamvikshan/r2git/commit/37a11a3c728805e74cd0a251421c8739d8b04082) - **deps**: update bun to >=1.4.3 *(PR [#15](https://github.com/iamvikshan/r2git/pull/15) by [@renovate[bot]](https://github.com/apps/renovate))*
+- [`a5dc702`](https://github.com/iamvikshan/r2git/commit/a5dc702034340fb4f64a9df95a61b87bc6b73dd5) - **deps**: update dependency oxlint-tsgolint to ^7.0.2004 *(PR [#16](https://github.com/iamvikshan/r2git/pull/16) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.4] - 2026-10-09
 ### :wrench: Chores
 - [`db32433`](https://github.com/iamvikshan/r2git/commit/db32433a5fc2ae0a849d42fcf3e021581ac12e65) - **deps**: update linters and formatters *(PR [#14](https://github.com/iamvikshan/r2git/pull/14) by [@renovate[bot]](https://github.com/apps/renovate))*
@@ -67,3 +73,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.2.2]: https://github.com/iamvikshan/r2git/compare/v0.2.1...v0.2.2
 [v0.2.3]: https://github.com/iamvikshan/r2git/compare/v0.2.2...v0.2.3
 [v0.2.4]: https://github.com/iamvikshan/r2git/compare/v0.2.3...v0.2.4
+[v0.2.5]: https://github.com/iamvikshan/r2git/compare/v0.2.4...v0.2.5
