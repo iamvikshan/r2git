@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.10] - 2026-10-28
+### :wrench: Chores
+- [`ec5b687`](https://github.com/iamvikshan/r2git/commit/ec5b6871068f9a8ffc8b4fabb4f6cf39e60509fc) - **deps**: update dependency @types/bun to ^1.4.4 *(PR [#21](https://github.com/iamvikshan/r2git/pull/21) by [@renovate[bot]](https://github.com/apps/renovate))*
+- [`2160389`](https://github.com/iamvikshan/r2git/commit/2160389710fd89df60700a0cee4121cb281aaa2d) - **deps**: update dependency oxlint-tsgolint to ^7.0.2005 *(PR [#22](https://github.com/iamvikshan/r2git/pull/22) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.9] - 2026-10-26
 ### :wrench: Chores
 - [`cef2726`](https://github.com/iamvikshan/r2git/commit/cef272667c9b8b296fc3f5957c5b76a432c4963c) - **deps**: update bun to >=1.4.4 *(PR [#20](https://github.com/iamvikshan/r2git/pull/20) by [@renovate[bot]](https://github.com/apps/renovate))*
@@ -98,3 +104,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.2.7]: https://github.com/iamvikshan/r2git/compare/v0.2.6...v0.2.7
 [v0.2.8]: https://github.com/iamvikshan/r2git/compare/v0.2.7...v0.2.8
 [v0.2.9]: https://github.com/iamvikshan/r2git/compare/v0.2.8...v0.2.9
+[v0.2.10]: https://github.com/iamvikshan/r2git/compare/v0.2.9...v0.2.10
