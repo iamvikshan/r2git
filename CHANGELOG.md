@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.11] - 2026-11-02
+### :wrench: Chores
+- [`17663b7`](https://github.com/iamvikshan/r2git/commit/17663b75a9f7ce2eeeb84c2d2cdd18416a76082c) - **deps**: update linters and formatters *(PR [#23](https://github.com/iamvikshan/r2git/pull/23) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.10] - 2026-10-28
 ### :wrench: Chores
 - [`ec5b687`](https://github.com/iamvikshan/r2git/commit/ec5b6871068f9a8ffc8b4fabb4f6cf39e60509fc) - **deps**: update dependency @types/bun to ^1.4.4 *(PR [#21](https://github.com/iamvikshan/r2git/pull/21) by [@renovate[bot]](https://github.com/apps/renovate))*
@@ -105,3 +110,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.2.8]: https://github.com/iamvikshan/r2git/compare/v0.2.7...v0.2.8
 [v0.2.9]: https://github.com/iamvikshan/r2git/compare/v0.2.8...v0.2.9
 [v0.2.10]: https://github.com/iamvikshan/r2git/compare/v0.2.9...v0.2.10
+[v0.2.11]: https://github.com/iamvikshan/r2git/compare/v0.2.10...v0.2.11
