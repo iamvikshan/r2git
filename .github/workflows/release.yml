@@ -206,7 +206,7 @@ jobs:
         run: npm publish --provenance --access public
 
       - name: Publish GitHub Release with Archived Binaries
-        uses: softprops/action-gh-release@v3.0.3
+        uses: softprops/action-gh-release@v3.0.4
         with:
           token: ${{ secrets.GH_TOKEN }}
           tag_name: ${{ needs.prepare.outputs.new_tag }}
