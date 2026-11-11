@@ -177,7 +177,7 @@ jobs:
           git push -f "$TEMP_URL" ${{ needs.prepare.outputs.new_tag }}
 
       - name: Generate release changelog
-        uses: requarks/changelog-action@v1.10.3
+        uses: requarks/changelog-action@v1.11.0
         with:
           token: ${{ secrets.GH_TOKEN }}
           tag: ${{ needs.prepare.outputs.new_tag }}
