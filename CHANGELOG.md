@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.13] - 2026-11-13
+### :bug: Bug Fixes
+- [`47a6d82`](https://github.com/iamvikshan/r2git/commit/47a6d82d6aa916b30796390b9d769c74b6606bd2) - **deps**: update dependency @clack/prompts to ^1.9.0 *(PR [#29](https://github.com/iamvikshan/r2git/pull/29) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+### :wrench: Chores
+- [`c266251`](https://github.com/iamvikshan/r2git/commit/c266251a8fa4dc92b82278b0f214fe7ef85c9aed) - **deps**: update requarks/changelog-action action to v1.11.0 *(PR [#27](https://github.com/iamvikshan/r2git/pull/27) by [@renovate[bot]](https://github.com/apps/renovate))*
+- [`18a3c08`](https://github.com/iamvikshan/r2git/commit/18a3c08b97833fd99082c00be222b0ce9fe1fadc) - **deps**: update linters and formatters *(PR [#28](https://github.com/iamvikshan/r2git/pull/28) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.12] - 2026-11-10
 ### :wrench: Chores
 - [`cd49028`](https://github.com/iamvikshan/r2git/commit/cd490289bf12e6e4fb14362105efc600d87ffe54) - **deps**: update dependency oxlint-tsgolint to ^7.0.2006 *(PR [#24](https://github.com/iamvikshan/r2git/pull/24) by [@renovate[bot]](https://github.com/apps/renovate))*
@@ -119,3 +128,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.2.10]: https://github.com/iamvikshan/r2git/compare/v0.2.9...v0.2.10
 [v0.2.11]: https://github.com/iamvikshan/r2git/compare/v0.2.10...v0.2.11
 [v0.2.12]: https://github.com/iamvikshan/r2git/compare/v0.2.11...v0.2.12
+[v0.2.13]: https://github.com/iamvikshan/r2git/compare/v0.2.12...v0.2.13
