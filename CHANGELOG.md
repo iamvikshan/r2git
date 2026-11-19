@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.2.15] - 2026-11-19
+### :wrench: Chores
+- [`f0926fb`](https://github.com/iamvikshan/r2git/commit/f0926fb17f27e47aff384b8b6ade07db1f98aa07) - **deps**: update dependency lint-staged to ^17.6.1 *(PR [#31](https://github.com/iamvikshan/r2git/pull/31) by [@renovate[bot]](https://github.com/apps/renovate))*
+
+
 ## [v0.2.14] - 2026-11-18
 ### :wrench: Chores
 - [`9296d72`](https://github.com/iamvikshan/r2git/commit/9296d72fa5129ea01be7d8f5d672ef0072606b68) - **deps**: update dependency oxlint-tsgolint to ^7.0.2007 *(PR [#30](https://github.com/iamvikshan/r2git/pull/30) by [@renovate[bot]](https://github.com/apps/renovate))*
@@ -135,3 +140,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [v0.2.12]: https://github.com/iamvikshan/r2git/compare/v0.2.11...v0.2.12
 [v0.2.13]: https://github.com/iamvikshan/r2git/compare/v0.2.12...v0.2.13
 [v0.2.14]: https://github.com/iamvikshan/r2git/compare/v0.2.13...v0.2.14
+[v0.2.15]: https://github.com/iamvikshan/r2git/compare/v0.2.14...v0.2.15
