@@ -34,7 +34,7 @@
     "picomatch": "^4.0.7"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.4",
+    "@types/bun": "^1.4.5",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.1",
     "oxfmt": "^0.78.0",
